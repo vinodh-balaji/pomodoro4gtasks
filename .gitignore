@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Next.js & Build Output
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+
+# OS & Environment Files
+.DS_Store
+*.pem
+.env.local
+.env*.local
+
+# AI Agent & Workspace Caches
+.agent/
+.agents/
+.claude/
+
+# Capacitor / Native Caches
+android/app/build/
+android/.gradle/
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
+ios/App/CapApp-SPM/.swiftpm/
+
+# Testing & Logs
+coverage/
+*.log

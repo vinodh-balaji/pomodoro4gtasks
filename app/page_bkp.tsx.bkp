@@ -1,0 +1,728 @@
+"use client";
+
+import type { NextPage } from 'next';
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useAction } from 'convex/react';
+import { Id } from '../convex/_generated/dataModel';
+import { api } from '../convex/_generated/api';
+import AnalyticsView from '../components/AnalyticsView';
+import { SocialLogin } from '@capgo/capacitor-social-login';
+import {playCompletionChime, requestNotificationPermission, sendCompletionNotification } from '../lib/audio';
+
+
+
+const HomePage: NextPage = () => {
+    const [newTask, setNewTask] = useState('');
+    const [estimatedPomos, setEstimatedPomos] = useState(1);
+    const [selectedTaskId, setSelectedTaskId] = useState('');
+    const [seconds, setSeconds] = useState(1500);
+    const [isRunning, setIsRunning] = useState(false);
+    const [newListTitle, setNewListTitle] = useState('');
+    const [listTaskInputs, setListTaskInputs] = useState<Record<string, string>>({});
+    const [activeTab, setActiveTab] = useState<'board' | 'dashboard' | 'analytics' | 'menu'>('board');
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [pipWindowRef, setPipWindowRef] = useState<Window | null>(null);
+    const DAILY_GOAL = 8;    
+
+    // Store access token in state & restore from localStorage on mount
+    const [accessToken, setAccessToken] = useState<string | null>(null);
+    useEffect(() => {
+        const initAuth = async () => {
+          try {
+            await SocialLogin.initialize({
+            google: {
+                webClientId: '765553589642-pih5m7le7dvgpetrqtqtffmmdroe31p2.apps.googleusercontent.com',
+            },
+        });
+      } catch (error) {
+        console.error("Failed to initialize SocialLogin:", error);
+      }
+    };
+    initAuth();
+  }, []);
+
+    useEffect(() => {
+        const savedToken = localStorage.getItem('google_access_token');
+        const expiry = localStorage.getItem('google_token_expiry');
+        
+        if (savedToken && expiry && Date.now() < Number(expiry)) {
+            setAccessToken(savedToken);
+        } else {
+            localStorage.removeItem('google_access_token');
+            localStorage.removeItem('google_token_expiry');
+        }
+    }, []);
+
+
+    const lists = useQuery(api.lists.getLists) || [];
+    const tasks = useQuery(api.tasks.list);
+    const localStartOfDay = new Date();
+    localStartOfDay.setHours(0, 0, 0, 0);
+    const todaySessions = useQuery(api.sessions.getTodaySessions, { startOfDay: localStartOfDay.getTime() }) || [];
+    const syncGoogleTasks = useAction(api.gtasks.syncFromGoogle);
+    const createGoogleTask = useAction(api.gtasks.createTaskInGoogle);
+    const completeGoogleTask = useAction(api.gtasks.completeTaskInGoogle);
+    const completeTask = useMutation(api.tasks.completeTask);
+    const toggleListVisibility = useMutation(api.lists.toggleListVisibility);
+    const createLocalList = useMutation(api.lists.createLocalList);
+    const addTask = useMutation(api.tasks.insert);
+    const updateEstimatedPomos = useMutation(api.tasks.updateEstimatedPomos);
+    const logSession = useMutation(api.sessions.log);
+
+   
+    const handleAddTaskToList = async (list: any) => {
+        const title = listTaskInputs[list._id];
+        if (!title?.trim()) return;
+
+        if (list.type === 'google') {
+            if (!accessToken) {
+                await loginNative();
+                return;
+            }
+            try {
+                await createGoogleTask({
+                    accessToken,
+                    title,
+                    estimatedPomos: 1,
+                    listId: list._id,
+                });
+            } catch (error) {
+                console.error("Failed to create task in Google:", error);
+                localStorage.removeItem('google_access_token');
+                localStorage.removeItem('google_token_expiry');
+                setAccessToken(null);
+                await loginNative();
+                return;
+            }
+        } else {
+            await addTask({
+                title,
+                estimatedPomos: 1,
+                listId: list._id,
+            });
+        }
+
+        setListTaskInputs((prev) => ({ ...prev, [list._id]: '' }));
+    };
+    const loginNative = async () => {
+        try {
+            const res = await SocialLogin.login({
+                provider: 'google',
+                options: {
+                    scopes: ['https://www.googleapis.com/auth/tasks'],
+                },
+            });
+
+            const result = res.result;
+            if ('accessToken' in result && result.accessToken) {
+                const token = result.accessToken.token;
+                const expiryTime = Date.now() + 3600 * 1000;
+
+                setAccessToken(token);
+                localStorage.setItem('google_access_token', token);
+                localStorage.setItem('google_token_expiry', expiryTime.toString());
+                return token;
+            }
+            return null;
+        } catch (error) {
+            console.error("Native Google Sign-In Failed:", error);
+            return null;
+        }
+    };
+
+    const handleSyncGoogleTasks = async () => {
+        let currentToken = accessToken;
+        if (!currentToken) {
+            currentToken = await loginNative();
+            if (!currentToken) return;
+        }
+
+
+    try {
+        await syncGoogleTasks({ accessToken: currentToken });
+        alert("Tasks successfully synced from Google!");
+    } catch (error) {
+            console.error("Sync failed:", error);
+            localStorage.removeItem('google_access_token');
+            localStorage.removeItem('google_token_expiry');
+            setAccessToken(null);
+            await loginNative();
+        }
+    };
+    
+    
+    const handleCompleteTask = async (task: any, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (task.gtask_id) {
+            if (!accessToken) {
+                await loginNative();
+                return;
+            }
+            try {
+                await completeGoogleTask({
+                    accessToken,
+                    taskId: task._id,
+                    gtaskId: task.gtask_id,
+                    listId: task.list_id,
+                });
+            } catch (error) {
+                console.error("Failed to complete task in Google:", error);
+            }
+        } else {
+            await completeTask({ id: task._id });
+        }
+    };
+
+    
+    const handleSelectTask = (taskId: string) => {
+        setSelectedTaskId(taskId);
+    };
+
+    const handleStart = () => {
+        setIsRunning(true);
+        setActiveTab('dashboard'); // Auto-switch to Dashboard view when timer starts
+        requestNotificationPermission(); // Request notification access on timer start
+    };
+
+    const handlePause = () => {
+        setIsRunning(false);
+    };
+
+    const handleLogSession = async () => {
+        if (!selectedTaskId) return;
+        await logSession({ taskId: selectedTaskId as Id<"tasks">, durationMinutes: 25 });
+        setSeconds(1500);
+        setIsRunning(false);
+    };
+
+    useEffect(() => {
+        let interval: NodeJS.Timeout | null = null;
+        if (isRunning && seconds > 0) {
+            interval = setInterval(() => {
+                setSeconds((prev) => prev - 1);
+            }, 1000);
+        } else if (seconds === 0 && isRunning) {
+            setIsRunning(false);
+            // Audio & Push Notification Trigger
+            playCompletionChime();
+            const currentTask = tasks?.find((t) => t._id === selectedTaskId);
+            sendCompletionNotification(currentTask?.title);
+            if (selectedTaskId) {
+                handleLogSession();
+            }
+        }
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [isRunning, seconds, selectedTaskId]);
+
+    // Update Picture-in-Picture Window content while timer ticks
+    useEffect(() => {
+        if (pipWindowRef) {
+            const timerEl = pipWindowRef.document.getElementById('pip-timer');
+            const playPauseBtn = pipWindowRef.document.getElementById('pip-play-pause');
+            if (timerEl) timerEl.innerText = formatTime(seconds);
+            if (playPauseBtn) {
+                playPauseBtn.innerText = isRunning ? '⏸' : '▶';
+                playPauseBtn.title = isRunning ? 'Pause' : 'Start';
+            }
+        }
+    }, [seconds, isRunning, pipWindowRef]);
+
+    // Toggle Browser Fullscreen
+    const toggleFullscreen = () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+            setIsFullscreen(true);
+        } else {
+            document.exitFullscreen();
+            setIsFullscreen(false);
+        }
+    };
+
+    // Toggle Always-On-Top Floating Desktop Widget (Document PiP API)
+    const toggleFloatingWidget = async () => {
+        if (!('documentPictureInPicture' in window)) {
+            alert("Floating desktop widget is supported in Chrome, Edge, and Chromium browsers.");
+            return;
+        }
+
+        const pipApi = (window as any).documentPictureInPicture;
+        if (pipApi.window) {
+            pipApi.window.close();
+            setPipWindowRef(null);
+            return;
+        }
+
+        const pipWin = await pipApi.requestWindow({ width: 280, height: 200 });
+        setPipWindowRef(pipWin);
+
+        const taskTitle = selectedTaskId 
+            ? tasks?.find(t => t._id === selectedTaskId)?.title || 'Active Session'
+            : 'No task selected';
+
+        pipWin.document.head.innerHTML = `
+            <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { 
+                    background-color: #141414; 
+                    color: #e4e4e7; 
+                    font-family: system-ui, -apple-system, sans-serif;
+                    height: 100vh;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                    padding: 16px;
+                    user-select: none;
+                }
+                .task-badge {
+                    font-size: 11px;
+                    color: #34d399;
+                    background: rgba(6, 78, 59, 0.4);
+                    border: 1px solid rgba(4, 120, 87, 0.4);
+                    padding: 3px 10px;
+                    border-radius: 20px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    max-width: 100%;
+                    text-align: center;
+                }
+                .timer-display {
+                    font-size: 44px;
+                    font-family: monospace;
+                    font-weight: 700;
+                    color: #ffffff;
+                    text-align: center;
+                    letter-spacing: 2px;
+                    margin: 4px 0;
+                }
+                .control-bar {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 12px;
+                    background: #1e1e1e;
+                    padding: 8px;
+                    border-radius: 24px;
+                    border: 1px solid #27272a;
+                }
+                .btn {
+                    background: #27272a;
+                    color: #ffffff;
+                    border: none;
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    font-size: 14px;
+                    transition: background 0.2s;
+                }
+                .btn:hover { background: #3f3f46; }
+                .btn-primary { background: #059669; }
+                .btn-primary:hover { background: #10b981; }
+                .btn-reset { background: #d97706; }
++                .btn-reset:hover { background: #f59e0b; }
+            </style>
+        `;
+
+        pipWin.document.body.innerHTML = `
+            <div class="task-badge">${taskTitle}</div>
+            <div id="pip-timer" class="timer-display">${formatTime(seconds)}</div>
+            
+            <div class="control-bar">
+                <!-- Start/Pause Toggle -->
+                <button id="pip-play-pause" class="btn btn-primary" title="${isRunning ? 'Pause' : 'Start'}">
+                    ${isRunning ? '⏸' : '▶'}
+                </button>
+                
+                <!-- Reset Timer -->
+                <button id="pip-reset" class="btn btn-reset" title="Reset (25:00)">🔄</button>
+                
+            </div>
+        `;
+
+        // Event Handlers
+        pipWin.document.getElementById('pip-play-pause')!.onclick = () => {
+            setIsRunning((prev) => !prev);
+        };
+
+        pipWin.document.getElementById('pip-reset')!.onclick = () => {
+            setIsRunning(false);
+            setSeconds(1500);
+        };
+
+        pipWin.addEventListener('pagehide', () => setPipWindowRef(null));
+    };
+
+
+
+    const formatTime = (totalSeconds: number) => {
+        const mins = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+        const secs = (totalSeconds % 60).toString().padStart(2, '0');
+        return `${mins}:${secs}`;
+    };
+
+    const localLists = lists.filter((l) => l.type === 'local');
+    const googleLists = lists.filter((l) => l.type === 'google');
+    const visibleLists = lists.filter((l) => l.is_visible);
+    // Circular timer metrics (25 mins = 1500 secs)
+    const totalDuration = 1500;
+    const strokeDashoffset = 283 - (seconds / totalDuration) * 283;
+
+    return (
+              <div className="flex flex-col md:flex-row h-screen bg-[#141414] text-gray-200 overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+            {/* Mobile Top Header */}
+            <header className="md:hidden h-14 px-4 flex items-center justify-between border-b border-zinc-800 shrink-0 bg-[#1e1e1e]">
+                <span className="font-bold text-base text-blue-400">✓ Tasks Pomodoro</span>
+                <button
+                    onClick={handleSyncGoogleTasks}
+                    className="bg-green-700 hover:bg-green-600 text-xs text-white px-3 py-1.5 rounded"
+                >
+                    Sync
+                </button>
+            </header>
+
+            {/* Sidebar Menu (Desktop Always Visible, Mobile Toggled via Lists Tab) */}
+            <aside className={`w-full md:w-64 bg-[#1e1e1e] md:border-r border-zinc-800 p-4 flex-col gap-6 shrink-0 select-none overflow-y-auto ${activeTab === 'menu' ? 'flex flex-1' : 'hidden md:flex'}`}>
+              <div className="flex items-center justify-between">
+                  <span className="font-bold text-lg text-blue-400">✓ Tasks</span>
+                  <button
+                      onClick={handleSyncGoogleTasks}
+                      className="bg-green-700 hover:bg-green-600 text-xs text-white px-2 py-1 rounded"
+                  >
+                      Sync
+                  </button>
+              </div>
+
+                {/* View Switcher Tabs */}
+                <div className="flex bg-zinc-900 p-1 rounded-lg border border-zinc-800">
+                    <button
+                        onClick={() => setActiveTab('board')}
+                        className={`flex-1 text-xs py-1 rounded font-medium transition ${activeTab === 'board' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    >
+                        Board 
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('dashboard')}
+                        className={`flex-1 text-xs py-1 rounded font-medium transition ${activeTab === 'dashboard' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    >
+                        Dashboard
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('analytics')}
+                        className={`flex-1 text-xs py-1 rounded font-medium transition ${activeTab === 'analytics' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    >
+                        Analytics
+                    </button>
+                </div>  
+
+                {/* Local Lists Section */}
+                <div>
+                    <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Local Lists</div>
+                    <div className="flex flex-col gap-1">
+                        {localLists.map((list) => (
+                            <label key={list._id} className="flex items-center gap-2 text-sm p-1.5 hover:bg-zinc-800 rounded cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={list.is_visible}
+                                    onChange={(e) => toggleListVisibility({ id: list._id, is_visible: e.target.checked })}
+                                    className="rounded border-zinc-700 bg-zinc-900 text-blue-600"
+                                />
+                                <span>{list.title}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+                {/* Google Lists Section */}
+                <div>
+                    <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Google Tasks Lists</div>
+                    <div className="flex flex-col gap-1">
+                        {googleLists.map((list) => (
+                            <label key={list._id} className="flex items-center gap-2 text-sm p-1.5 hover:bg-zinc-800 rounded cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={list.is_visible}
+                                    onChange={(e) => toggleListVisibility({ id: list._id, is_visible: e.target.checked })}
+                                    className="rounded border-zinc-700 bg-zinc-900 text-blue-600"
+                                />
+                                <span>{list.title}</span>
+                            </label>
+                        ))}
+                    </div>
+            </div>
+                {/* Quick Local List Creator */}
+                <div className="mt-auto flex gap-2">
+                    <input
+                        type="text"
+                        placeholder="New list..."
+                        value={newListTitle}
+                        onChange={(e) => setNewListTitle(e.target.value)}
+                        className="w-full text-xs bg-zinc-900 border border-zinc-700 rounded p-1.5 text-white placeholder-zinc-500"
+                    />
+                    <button
+                        onClick={() => {
+                            if (newListTitle) {
+                                createLocalList({ title: newListTitle });
+                                setNewListTitle('');
+                            }
+                        }}
+                        className="bg-blue-600 text-white text-xs px-2.5 py-1.5 rounded"
+                    >
+                        +
+                    </button>
+                </div>
+            </aside>
+
+            {/* Main Board View */}
+            <main className={`flex-1 p-4 md:p-6 overflow-y-auto flex-col gap-6 pb-20 md:pb-6 ${activeTab === 'menu' ? 'hidden md:flex' : 'flex'}`}>
+                {activeTab === 'dashboard' ? (
+                    /* WORK DASHBOARD VIEW */
+                    <div className="flex flex-col gap-6 max-w-4xl mx-auto w-full">
+                        {/* Daily Goal Summary Header */}
+                        <div className="bg-[#1e1e1e] border border-zinc-800 rounded-xl p-5 flex justify-between items-center shadow-lg">
+                            <div>
+                                <h2 className="text-lg font-bold text-white">Daily Work Dashboard</h2>
+                                <p className="text-xs text-zinc-400 mt-0.5">Target: <span className="text-zinc-200 font-semibold">{DAILY_GOAL} Pomodoros</span></p>
+                            </div>
+                            <div className="bg-emerald-950/40 border border-emerald-800/50 px-4 py-2 rounded-xl text-right">
+                                <span className="text-xs text-emerald-400 font-medium uppercase tracking-wider block">Achieved Goal</span>
+                                <span className="text-xl font-bold text-emerald-300 font-mono">{todaySessions.length} / {DAILY_GOAL} <span className="text-xs font-normal">Sessions</span></span>
+                            </div>
+                        </div>
+
+                        {/* Active Circular Timer Display */}
+                        <div className="bg-[#1e1e1e] border border-zinc-800 rounded-xl p-8 flex flex-col items-center justify-center gap-6 shadow-xl relative overflow-hidden">
+                            <span className="text-xs font-medium text-emerald-400 uppercase tracking-widest bg-emerald-950/60 border border-emerald-800/40 px-3 py-1 rounded-full">
+                                {selectedTaskId ? tasks?.find((t) => t._id === selectedTaskId)?.title : 'No task selected'}
+                            </span>
+
+                            {/* Depleting Ring Clock */}
+                            <div className="relative w-64 h-64 flex items-center justify-center">
+                                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                                    {/* Background Circle */}
+                                    <circle cx="50" cy="50" r="45" className="text-zinc-800 stroke-current" strokeWidth="6" fill="transparent" />
+                                    {/* Depleting Active Ring */}
+                                    <circle
+                                        cx="50"
+                                        cy="50"
+                                        r="45"
+                                        className="text-emerald-500 stroke-current transition-all duration-1000 ease-linear"
+                                        strokeWidth="6"
+                                        strokeDasharray="283"
+                                        strokeDashoffset={strokeDashoffset}
+                                        strokeLinecap="round"
+                                        fill="transparent"
+                                    />
+                                </svg>
+                                <span className="absolute text-5xl font-mono font-bold text-white tracking-wider">
+                                    {formatTime(seconds)}
+                                </span>
+                            </div>
+
+                            {/* Timer Action Controls */}
+                            <div className="flex gap-3">
+                                <button onClick={handleStart} disabled={isRunning} className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 text-sm rounded-lg font-medium disabled:bg-zinc-800 transition">Start</button>
+                                <button onClick={handlePause} disabled={!isRunning} className="bg-zinc-700 hover:bg-zinc-600 text-white px-5 py-2 text-sm rounded-lg font-medium disabled:bg-zinc-800 transition">Pause</button>
+                                <button onClick={handleLogSession} disabled={!selectedTaskId} className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 text-sm rounded-lg font-medium disabled:bg-zinc-800 transition">Log Session</button>
+                            </div>
+                            {/* Focus Mode Extra Options */}
+                            <div className="flex gap-4 border-t border-zinc-800/80 pt-4 mt-2">
+                                <button onClick={toggleFullscreen} className="text-xs text-zinc-400 hover:text-white flex items-center gap-1.5 transition">
+                                    <span>{isFullscreen ? 'Exit Fullscreen' : '⛶ Fullscreen Focus'}</span>
+                                </button>
+                                <button onClick={toggleFloatingWidget} className="text-xs text-zinc-400 hover:text-white flex items-center gap-1.5 transition">
+                                    <span>🗗 Floating Desktop Widget</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Running Session History Log */}
+                        <div className="bg-[#1e1e1e] border border-zinc-800 rounded-xl p-5 flex flex-col gap-4">
+                            <h3 className="text-sm font-semibold text-zinc-300 border-b border-zinc-800 pb-2">Today's Completed Log</h3>
+                            {todaySessions.length === 0 ? (
+                                <p className="text-xs text-zinc-500 italic py-2">No completed sessions logged today.</p>
+                            ) : (
+                                <div className="flex flex-col gap-2">
+                                    {todaySessions.map((session, index) => {
+                                        const endTime = new Date(session.completed_at);
+                                        const startTime = new Date(session.completed_at - (session.duration_minutes || 25) * 60 * 1000);
+                                        const formatTimeStr = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                                        return (
+                                            <div key={session._id} className="flex justify-between items-center bg-zinc-900/80 border border-zinc-800/80 px-4 py-2.5 rounded-lg text-xs">
+                                                <span className="font-mono text-zinc-300">
+                                                    <strong className="text-emerald-400 font-semibold">Session {index + 1}:</strong> From {formatTimeStr(startTime)} to {formatTimeStr(endTime)} - did <span className="text-white font-medium">"{session.task_title}"</span>
+                                                </span>
+                                                <span className="text-sm">{"🍅".repeat(session.session_number ?? 1)}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    ) : activeTab === 'analytics' ? ( 
+                    <AnalyticsView/> 
+                  ) : ( 
+                    /* BOARD VIEW */
+                    <>
+                        {/* Global Top Bar */}
+                
+                
+                
+                
+                <div className={`border rounded-xl p-4 flex justify-between items-center transition-all duration-300 ${
+                    selectedTaskId 
+                        ? 'bg-gradient-to-r from-emerald-950/40 via-[#1e1e1e] to-[#1e1e1e] border-emerald-500/30 shadow-lg shadow-emerald-950/20' 
+                        : 'bg-[#1e1e1e] border-zinc-800'
+                }`}>
+                    <div className="flex items-center gap-4">
+                        <span className="text-3xl font-mono font-bold text-white tracking-wider">{formatTime(seconds)}</span>
+                        {selectedTaskId ? (
+                            <div className="flex items-center gap-2 bg-emerald-950/60 border border-emerald-800/50 text-emerald-300 px-3 py-1 rounded-full text-xs font-medium shadow-inner">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                <span className="truncate max-w-xs">{tasks?.find((t) => t._id === selectedTaskId)?.title}</span>
+                            </div>
+                        ) : (
+                            <span className="text-xs font-medium text-zinc-500 italic bg-zinc-900/50 px-3 py-1 rounded-full border border-zinc-800">
+                                Select a task to begin
+                            </span>
+                        )}                        
+
+
+                    </div>
+                    <div className="flex gap-2">
+                        <button onClick={handleStart} disabled={isRunning} className="bg-blue-600 text-white px-3 py-1.5 text-sm rounded disabled:bg-zinc-700">Start</button>
+                        <button onClick={handlePause} disabled={!isRunning} className="bg-zinc-700 text-white px-3 py-1.5 text-sm rounded disabled:bg-zinc-800">Pause</button>
+                        <button onClick={handleLogSession} disabled={!selectedTaskId} className="bg-green-600 text-white px-3 py-1.5 text-sm rounded disabled:bg-zinc-700">Log Session</button>
+                    </div>
+                </div>
+
+                {/* Multi-Column Board (Max 4 per row, Infinite rows) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                    {visibleLists.map((list) => {
+                        const listTasks = tasks?.filter((t) => t.list_id === list._id && t.status !== "completed") || [];
+
+                        return (
+                            <div key={list._id} className="bg-[#1e1e1e] border border-zinc-800 rounded-xl p-4 flex flex-col min-h-[350px] shadow-lg resize-x overflow-auto max-w-full">
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="font-semibold text-white">{list.title}</h3>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 uppercase">{list.type}</span>
+                                </div>
+                                {/* Inline Add Task Input */}
+                                <div className="flex gap-1.5 mb-3">
+                                    <input
+                                        type="text"
+                                        placeholder="+ Add a task"
+                                        value={listTaskInputs[list._id] || ''}
+                                        onChange={(e) =>
+                                            setListTaskInputs((prev) => ({ ...prev, [list._id]: e.target.value }))
+                                        }
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') handleAddTaskToList(list);
+                                        }}
+                                        className="w-full text-xs bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+                                    />
+                                    <button
+                                        onClick={() => handleAddTaskToList(list)}
+                                        disabled={!listTaskInputs[list._id]?.trim()}
+                                        className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 text-white text-xs px-2.5 py-1.5 rounded transition"
+                                    >
+                                        Add
+                                    </button>
+                                </div>
+
+
+
+                                <div className="flex flex-col gap-2 flex-1 overflow-y-auto">
+                                    {listTasks.map((task) => (
+                                        <div
+                                            key={task._id}
+                                            onClick={() => handleSelectTask(task._id)}
+                                            className={`flex justify-between items-center p-2.5 rounded-lg border transition cursor-pointer select-none ${
+                                                selectedTaskId === task._id
+                                                    ? 'border-emerald-500 bg-emerald-950/20 shadow-emerald-900/30 shadow-md'
+                                                    : 'bg-zinc-900/60 border-zinc-800/80 hover:border-zinc-700'
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-2.5">
+                                                <input
+                                                    type="checkbox"
+                                                    onClick={(e) => handleCompleteTask(task, e)}
+                                                    className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-0 cursor-pointer"
+                                                />
+                                                <span className="text-sm font-medium text-zinc-200">{task.title}</span>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                {/* Interactive Pomodoro Estimator */}
+                                                <div
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="flex items-center gap-1 bg-zinc-800 px-1.5 py-0.5 rounded border border-zinc-700/50"
+                                                >
+                                                    <span className="text-xs text-zinc-400 font-mono">🍅 {task.completed_pomos}/</span>
+                                                    <button
+                                                        onClick={() => updateEstimatedPomos({ taskId: task._id, estimatedPomos: Math.max(1, (task.estimated_pomos ?? 1) - 1) })}
+                                                        className="text-zinc-400 hover:text-white text-xs px-0.5 font-bold"
+                                                    >-</button>
+                                                    <span className="text-xs text-zinc-200 font-mono font-semibold">{task.estimated_pomos}</span>
+                                                    <button
+                                                        onClick={() => updateEstimatedPomos({ taskId: task._id, estimatedPomos: (task.estimated_pomos ?? 1) + 1 })}
+                                                        className="text-zinc-400 hover:text-white text-xs px-0.5 font-bold"
+                                                    >+</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                </>
+                )}
+            </main>
+
+            {/* Mobile Bottom Navigation Bar */}
+            <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-[#1e1e1e]/95 backdrop-blur-md border-t border-zinc-800 flex items-center justify-around pb-[env(safe-area-inset-bottom)] z-50">
+                <button
+                    onClick={() => setActiveTab('board')}
+                    className={`flex flex-col items-center gap-1 text-xs ${activeTab === 'board' ? 'text-blue-400 font-bold' : 'text-zinc-400'}`}
+                >
+                    <span className="text-base">📋</span>
+                    Board
+                </button>
+                <button
+                    onClick={() => setActiveTab('dashboard')}
+                    className={`flex flex-col items-center gap-1 text-xs ${activeTab === 'dashboard' ? 'text-emerald-400 font-bold' : 'text-zinc-400'}`}
+                >
+                    <span className="text-base">⏱️</span>
+                    Timer
+                </button>
+                <button
+                    onClick={() => setActiveTab('analytics')}
+                    className={`flex flex-col items-center gap-1 text-xs ${activeTab === 'analytics' ? 'text-purple-400 font-bold' : 'text-zinc-400'}`}
+                >
+                    <span className="text-base">📊</span>
+                    Analytics
+                </button>
+                <button
+                    onClick={() => setActiveTab('menu')}
+                    className={`flex flex-col items-center gap-1 text-xs ${activeTab === 'menu' ? 'text-blue-400 font-bold' : 'text-zinc-400'}`}
+                >
+                    <span className="text-base">⚙️</span>
+                    Lists
+                </button>
+            </nav>
+
+
+        </div>
+    );
+};
+
+export default HomePage;
