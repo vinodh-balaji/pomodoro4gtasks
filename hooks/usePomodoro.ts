@@ -15,7 +15,7 @@ import {
 } from '../lib/googleStorage';
 
 export function usePomodoro() {
-    const DEFAULT_WORK_MINUTES = 0.05;
+    const DEFAULT_WORK_MINUTES = 0.5;
     const [workDurationMinutes, setWorkDurationMinutes] = useState(DEFAULT_WORK_MINUTES);
     const [newTask, setNewTask] = useState('');
     const [estimatedPomos, setEstimatedPomos] = useState(1);
@@ -128,14 +128,40 @@ export function usePomodoro() {
     const activeList = lists.find((l: any) => l.is_visible) || lists[0] || null;
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
-    const todaySessions = sessions.filter((s: any) => {
-        const dateVal = s.completed_at || s.completedAt || s.date || s.timestamp;
-        if (!dateVal) return false;
-        const time = new Date(dateVal).getTime();
-        return !isNaN(time) && time >= startOfDay.getTime();
+    console.log('[SESSION DIAGNOSTIC] --- Run Check ---', {
+        localMidnight: startOfDay.toLocaleString(),
+        localMidnightIso: startOfDay.toISOString(),
+        startOfDayEpoch: startOfDay.getTime(),
+        totalSessionsInState: sessions.length,
     });
 
+    const todaySessions = sessions.filter((s: any, idx: number) => {
+        const dateVal = s.completed_at || s.completedAt || s.date || s.timestamp || s._id?.replace('sess-', '');
+        if (!dateVal) {
+            console.warn(`[SESSION DIAGNOSTIC] Session #${idx} (${s._id || s.id}) missing timestamp:`, s);
+            return false;
+        }
+        const time = new Date(dateVal).getTime();
+        const parsedDate = new Date(time);
+        const isToday = !isNaN(time) && time >= startOfDay.getTime();
 
+        console.log(`[SESSION DIAGNOSTIC] Session #${idx + 1}/${sessions.length}`, {
+            sessionId: s._id || s.id,
+            taskTitle: s.task_id,
+            rawDateVal: dateVal,
+            parsedLocal: parsedDate.toLocaleString(),
+            parsedUtc: parsedDate.toUTCString(),
+            sessionEpoch: time,
+            passedIsToday: isToday,
+        });
+
+        return isToday;
+    });
+
+    const handleDeleteSession = (sessionId: string) => {
+        const updated = sessions.filter((s: any) => (s._id || s.id) !== sessionId);
+        saveSessions(updated);
+    };
 
     const loginNative = async () => {
         try {
@@ -347,12 +373,11 @@ export function usePomodoro() {
     const handlePause = () => setIsRunning(false);
 
     const handleLogSession = async () => {
-        if (!selectedTaskId) return;
         const newSession = {
             _id: 'sess-' + Date.now(),
             completed_at: new Date().toISOString(),
             duration_minutes: workDurationMinutes,
-            task_id: selectedTaskId,
+            task_id: selectedTaskId || 'unassigned',
         };
         saveSessions([...sessions, newSession]);
         setSeconds(workDurationMinutes * 60);
@@ -518,7 +543,7 @@ export function usePomodoro() {
         accessToken,
         DAILY_GOAL,
         lists, tasks, todaySessions, sessions,
-        handleSelectTask, handleStart, handlePause, handleLogSession,
+        handleSelectTask, handleStart, handlePause, handleLogSession, handleDeleteSession,
         handleSyncGoogleTasks, handlePullToRefresh, handleAddTaskToList, handleCompleteTask, handleCreateGoogleList,
         updateEstimatedPomos,
         toggleFullscreen, toggleFloatingWidget, formatTime,

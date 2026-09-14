@@ -23,6 +23,7 @@ export default function MobileView(props: any) {
         handleAddTaskToList,
         handleCompleteTask,
         handleCreateGoogleList,
+        handleDeleteSession,
         updateEstimatedPomos,
         handleLogout,
         loginNative,
@@ -35,7 +36,8 @@ export default function MobileView(props: any) {
     const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
     const [selectedListId, setSelectedListId] = useState<string | null>(null);
     const [quickTaskTitle, setQuickTaskTitle] = useState('');
-    const { todaySessions = [], DAILY_GOAL = 8 } = props;
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+    const { todaySessions = [], sessions = [], DAILY_GOAL = 8 } = props;
     const [pullY, setPullY] = useState(0);
     const [swipeX, setSwipeX] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
@@ -128,7 +130,7 @@ export default function MobileView(props: any) {
         if (e) e.stopPropagation();
         setSelectedTaskId(taskId);
         setActiveTab('dashboard');
-        handleStart();
+        if (!isRunning) handleStart();
     };
 
     return (
@@ -165,6 +167,7 @@ export default function MobileView(props: any) {
                                                 key={list._id}
                                                 onClick={() => {
                                                     setSelectedListId(list._id);
+                                                    setActiveTab('board');
                                                     setIsDrawerOpen(false);
                                                 }}
                                                 className={`w-full p-3 rounded-xl text-left text-sm font-semibold flex items-center justify-between active:scale-[0.97] transition-transform ${
@@ -399,24 +402,55 @@ export default function MobileView(props: any) {
                             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Performance Analytics</h2>
                         </div>
                         <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs overflow-x-auto">
-                            <AnalyticsView />
+                           <AnalyticsView sessions={sessions} tasks={tasks} DAILY_GOAL={DAILY_GOAL} />
                         </div>
                     </div>
                 ) : activeTab === 'dashboard' ? (
                     /* TIMER VIEW */
                     <div className="flex flex-col items-center justify-center space-y-6 pt-4">
-                        {/* Today's Goal Tracker */}
-                        <div className="w-full max-w-xs bg-white p-3 rounded-2xl border border-slate-200/80 space-y-1.5 shadow-2xs">
-                            <div className="flex justify-between items-center text-xs font-bold text-slate-600">
-                                <span>Today's Progress</span>
-                                <span className="font-mono text-indigo-600">{todaySessions.length} / {DAILY_GOAL} Pomodoros</span>
-                            </div>
-                            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                <div className="bg-indigo-600 h-full transition-all duration-300" style={{ width: `${Math.min(100, (todaySessions.length / DAILY_GOAL) * 100)}%` }} />
-                            </div>
-                        </div>
-                        <div className="px-4 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-semibold max-w-[90%] truncate">
-                            🎯 {activeTask ? activeTask.title : 'No active task selected'}
+                        {/* Enhanced Active Task Card */}
+                        <div className="w-full max-w-xs bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col items-center gap-2">
+                            {activeTask ? (
+                                <>
+                                    <div className="flex items-center justify-between w-full">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                                            Active Task
+                                        </span>
+                                        <button
+                                            onClick={() => setSelectedTaskId('')}
+                                            className="text-xs text-slate-400 hover:text-slate-600 font-bold px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition-colors"
+                                        >
+                                            ✕ Clear
+                                        </button>
+                                    </div>
+                                    <h3 className="text-lg font-bold text-slate-900 text-center line-clamp-2 px-1 leading-snug">
+                                        {activeTask.title}
+                                    </h3>
+                                    <div className="flex items-center gap-1.5 pt-1">
+                                        {Array.from({ length: Math.max(activeTask.estimated_pomos || 1, activeTask.completed_pomos || 0) }).map((_, idx) => {
+                                            const isCompleted = idx < (activeTask.completed_pomos || 0);
+                                            return (
+                                                <span
+                                                    key={idx}
+                                                    className={`text-xl transition-all ${
+                                                        isCompleted ? 'filter drop-shadow-xs' : 'opacity-25 grayscale'
+                                                    }`}
+                                                >
+                                                    🍅
+                                                </span>
+                                            );
+                                        })}
+                                        <span className="text-xs font-mono text-slate-500 font-bold ml-1">
+                                            ({activeTask.completed_pomos || 0}/{activeTask.estimated_pomos || 1})
+                                        </span>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="text-center py-1">
+                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Current Focus</span>
+                                    <span className="text-sm font-bold text-indigo-600">🎯 Unassigned Focus Session</span>
+                                </div>
+                            )}
                         </div>
 
                         {/* Circular Depleting Timer */}
@@ -459,12 +493,69 @@ export default function MobileView(props: any) {
                             )}
                             <button
                                 onClick={handleLogSession}
-                                disabled={!selectedTaskId}
                                 className="px-5 py-4 bg-slate-200 active:bg-slate-300 text-slate-700 rounded-2xl font-semibold text-sm disabled:opacity-50 active:scale-95 transition-transform"
                             >
                                 Done
                             </button>
                         </div>
+                        {/* Today's Goal Tracker & Full Running History List */}
+                        <div className="w-full max-w-xs space-y-2 pt-2">
+                            <button
+                                onClick={() => setIsHistoryOpen((prev) => !prev)}
+                                className="w-full bg-white p-3.5 rounded-2xl border border-slate-200/80 space-y-2 shadow-2xs text-left active:scale-[0.99] transition-transform"
+                            >
+                                <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                                    <span className="flex items-center gap-1.5">
+                                        <span>Today's Progress</span>
+                                        <span className="text-[10px] text-slate-400">{isHistoryOpen ? '▲' : '▼'}</span>
+                                    </span>
+                                    <span className="font-mono text-indigo-600">{todaySessions.length} / {DAILY_GOAL} Pomodoros</span>
+                                </div>
+                                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                    <div className="bg-indigo-600 h-full transition-all duration-300" style={{ width: `${Math.min(100, (todaySessions.length / DAILY_GOAL) * 100)}%` }} />
+                                </div>
+                            </button>
+
+                            {/* Unclipped Full Running List */}
+                            {isHistoryOpen && (
+                                <div className="bg-white rounded-2xl border border-slate-200/80 p-3 shadow-2xs space-y-2 animate-fadeIn">
+                                    <div className="flex justify-between items-center pb-1 border-b border-slate-100">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Logged Today</span>
+                                        <span className="text-[10px] text-slate-400 font-semibold">{todaySessions.length} sessions</span>
+                                    </div>
+                                    {todaySessions.length === 0 ? (
+                                        <p className="text-xs text-slate-400 text-center py-2 italic">No sessions logged today yet.</p>
+                                    ) : (
+                                        todaySessions.map((sess: any) => {
+                                            const matchedTask = tasks?.find((t: any) => t._id === sess.task_id || t.gtask_id === sess.task_id);
+                                            const sessionTime = sess.completed_at || sess.timestamp ? new Date(sess.completed_at || sess.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today';
+                                            return (
+                                                <div key={sess._id || sess.id} className="flex items-center justify-between text-xs py-1.5 px-2 bg-slate-50 rounded-xl border border-slate-100">
+                                                    <div className="min-w-0 pr-2">
+                                                        <span className="font-semibold text-slate-800 truncate block">
+                                                            {matchedTask?.title || 'Unassigned Focus Session'}
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 font-mono">{sessionTime} • {sess.duration_minutes || 25}m</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDeleteSession(sess._id || sess.id);
+                                                        }}
+                                                        className="text-slate-400 hover:text-rose-600 p-1 text-xs font-bold active:scale-90 transition-transform"
+                                                        title="Delete session"
+                                                    >
+                                                        🗑️
+                                                    </button>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+
                     </div>
                 ) : (
                     /* TASK LIST VIEW */

@@ -8,20 +8,43 @@ interface HeatmapProps {
 }
 
 const Heatmap = ({ sessions = [] }: HeatmapProps) => {
-    // Group completed sessions by YYYY-MM-DD date string
-    const countsByDate = sessions.reduce((acc: Record<string, number>, session: any) => {
-        if (!session.completed_at) return acc;
-        const dateStr = new Date(session.completed_at).toISOString().split('T')[0];
-        acc[dateStr] = (acc[dateStr] || 0) + 1;
-        return acc;
-    }, {});
+    const getLocalDateStr = (d: Date) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
 
-    // Generate activity data for react-activity-calendar
-    const data = Object.entries(countsByDate).map(([date, count]) => ({
-        date,
-        count: count as number,
-        level: Math.min(4, Math.max(1, Math.ceil((count as number) / 2))),
-    }));
+ 
+    // 1. Group session counts by local YYYY-MM-DD
+    const countsByDate: Record<string, number> = {};
+    sessions.forEach((s: any) => {
+        const dateVal = s.completed_at || s.completedAt || s.date || s.timestamp || s._id?.replace('sess-', '');
+        if (!dateVal) return;
+        const time = typeof dateVal === 'number' ? dateVal : new Date(dateVal).getTime();
+        if (isNaN(time)) return;
+        const dateStr = getLocalDateStr(new Date(time));
+        countsByDate[dateStr] = (countsByDate[dateStr] || 0) + 1;
+    });
+
+    // 2. Fill continuous 9-month (270 days) date matrix ending today
+    const today = new Date();
+    const DAYS_TO_SHOW = 120;
+    const data = [];
+
+    for (let i = DAYS_TO_SHOW - 1; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const dateStr = getLocalDateStr(d);
+        const count = countsByDate[dateStr] || 0;
+        const level = count === 0 ? 0 : Math.min(4, Math.max(1, Math.ceil(count / 2)));
+
+        data.push({
+            date: dateStr,
+            count,
+            level,
+        });
+    }
 
     return (
         <div className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-slate-200/70 shadow-sm">

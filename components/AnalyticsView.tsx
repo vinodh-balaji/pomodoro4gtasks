@@ -7,14 +7,26 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 interface AnalyticsViewProps {
     sessions?: any[];
+    tasks?: any[];
     DAILY_GOAL?: number;
 }
 
-export default function AnalyticsView({ sessions = [], DAILY_GOAL = 8 }: AnalyticsViewProps) {
-    const todayStr = new Date().toISOString().split('T')[0];
+export default function AnalyticsView({ sessions = [], tasks = [], DAILY_GOAL = 8 }: AnalyticsViewProps) {
+    const getLocalDateStr = (d: Date) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const todayStr = getLocalDateStr(new Date());
+
     const todaySessionsCount = sessions.filter((s: any) => {
-        if (!s.completed_at) return false;
-        return new Date(s.completed_at).toISOString().split('T')[0] === todayStr;
+        const dateVal = s.completed_at || s.completedAt || s.date || s.timestamp || s._id?.replace('sess-', '');
+        if (!dateVal) return false;
+        const time = typeof dateVal === 'number' ? dateVal : new Date(dateVal).getTime();
+        if (isNaN(time)) return false;
+        return getLocalDateStr(new Date(time)) === todayStr;
     }).length;
 
     const progressPercent = Math.min(100, Math.round((todaySessionsCount / DAILY_GOAL) * 100));
@@ -42,8 +54,8 @@ export default function AnalyticsView({ sessions = [], DAILY_GOAL = 8 }: Analyti
 
             {/* Heatmap Activity Section */}
             <div className="w-full overflow-x-auto min-h-[160px] scrollbar-thin">
-+                <Heatmap sessions={sessions} />
-+            </div>
+                <Heatmap sessions={sessions} />
+            </div>
         </div>
     );
 }
