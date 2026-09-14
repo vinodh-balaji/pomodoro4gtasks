@@ -22,6 +22,7 @@ export default function MobileView(props: any) {
         handleSyncGoogleTasks,
         handleAddTaskToList,
         handleCompleteTask,
+        handleCreateGoogleList,
         updateEstimatedPomos,
         handleLogout,
         loginNative,
@@ -186,13 +187,17 @@ export default function MobileView(props: any) {
                             <div className="flex gap-2">
                                 <input
                                     type="text"
-                                    placeholder="+ New list name"
+                                    placeholder="+ New Google List..."
                                     value={newListTitle}
                                     onChange={(e) => setNewListTitle(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleCreateGoogleList();
+                                    }}
                                     className="flex-1 text-xs bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-400"
                                 />
                                 <button
-                                    onClick={() => setNewListTitle('')}
+                                    onClick={() => handleCreateGoogleList()}
+                                    disabled={!newListTitle.trim()}
                                     className="bg-indigo-600 active:bg-indigo-700 text-white text-xs px-3 py-2 rounded-xl font-bold active:scale-90 transition-transform shadow-xs"
                                 >
                                     +

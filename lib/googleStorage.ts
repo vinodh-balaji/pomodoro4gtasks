@@ -96,6 +96,22 @@ export async function completeDirectGoogleTask(accessToken: string, listId: stri
     return await res.json();
 }
 
+
+export async function createDirectGoogleList(accessToken: string, title: string) {
+    const res = await fetch('https://tasks.googleapis.com/tasks/v1/users/@me/lists', {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title }),
+    });
+    if (!res.ok) {
+        throw new Error(`Failed to create Google Task List: ${res.statusText}`);
+    }
+    return await res.json();
+}
+
 // ==========================================
 // 2. GOOGLE DRIVE APPDATAFOLDER (ZERO-SERVER SYNC)
 // ==========================================

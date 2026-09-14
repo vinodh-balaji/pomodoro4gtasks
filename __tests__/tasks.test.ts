@@ -3,7 +3,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { usePomodoro } from '../hooks/usePomodoro';
-import { createDirectGoogleTask, completeDirectGoogleTask } from '../lib/googleStorage';
+import { createDirectGoogleTask, completeDirectGoogleTask, createDirectGoogleList } from '../lib/googleStorage';
 
 vi.mock('@capgo/capacitor-social-login', () => ({
   SocialLogin: {
@@ -17,6 +17,7 @@ vi.mock('../lib/googleStorage', () => ({
   fetchAllGoogleDataDirectly: vi.fn().mockResolvedValue({ lists: [], tasks: [] }),
   createDirectGoogleTask: vi.fn().mockResolvedValue({ id: 'gtask-123', title: 'Sync mobile code' }),
   completeDirectGoogleTask: vi.fn().mockResolvedValue({ id: 'gtask-123', status: 'completed' }),
+  createDirectGoogleList: vi.fn().mockResolvedValue({ id: 'glist-999', title: 'New Test List' }),
   readAppDataFromDrive: vi.fn().mockResolvedValue(null),
   saveAppDataToDrive: vi.fn().mockResolvedValue(true),
 }));
@@ -119,4 +120,24 @@ describe('Automated Task Creation Suite', () => {
 
     expect(result.current.tasks[0].estimated_pomos).toBe(3);
   });
+
+  it('creates a new Google Task list via REST API and updates list state', async () => {
+    localStorage.setItem('google_access_token', 'mock-google-token');
+    localStorage.setItem('google_token_expiry', (Date.now() + 3600000).toString());
+
+    const { result } = renderHook(() => usePomodoro());
+
+    await act(async () => {
+      await result.current.handleCreateGoogleList('New Test List');
+    });
+
+    expect(createDirectGoogleList).toHaveBeenCalledWith('mock-google-token', 'New Test List');
+    expect(result.current.lists).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ _id: 'glist-999', title: 'New Test List', type: 'google' }),
+      ])
+    );
+  });
+
+
 });

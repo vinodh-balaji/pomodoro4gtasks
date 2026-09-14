@@ -8,6 +8,7 @@ import {
     fetchAllGoogleDataDirectly,
     createDirectGoogleTask,
     completeDirectGoogleTask,
+    createDirectGoogleList,
     readAppDataFromDrive,
     saveAppDataToDrive,
     LocalAppData,
@@ -197,7 +198,32 @@ export function usePomodoro() {
 
         setListTaskInputs((prev) => ({ ...prev, [list._id]: '' }));
     };
+    const handleCreateGoogleList = async (titleOverride?: string) => {
+        const title = titleOverride || newListTitle;
+        if (!title.trim()) return;
 
+        let currentToken = accessToken || (await loginNative());
+        if (!currentToken) return;
+
+        try {
+            const created = await createDirectGoogleList(currentToken, title.trim());
+            const newList = {
+                _id: created.id,
+                gtask_list_id: created.id,
+                title: created.title,
+                type: 'google',
+                is_visible: true,
+            };
+            setGoogleLists((prev) => {
+                const updated = [...prev, newList];
+                localStorage.setItem('cached_google_lists', JSON.stringify(updated));
+                return updated;
+            });
+            setNewListTitle('');
+        } catch (error) {
+            console.error("Failed to create Google list:", error);
+        }
+    };
     const handleSyncGoogleTasks = async (silent = false, overrideToken?: string, forceFullSync = false) => {
         let currentToken = overrideToken || accessToken;
         if (!currentToken) return;
@@ -493,7 +519,7 @@ export function usePomodoro() {
         DAILY_GOAL,
         lists, tasks, todaySessions, sessions,
         handleSelectTask, handleStart, handlePause, handleLogSession,
-        handleSyncGoogleTasks, handlePullToRefresh, handleAddTaskToList, handleCompleteTask,
+        handleSyncGoogleTasks, handlePullToRefresh, handleAddTaskToList, handleCompleteTask, handleCreateGoogleList,
         updateEstimatedPomos,
         toggleFullscreen, toggleFloatingWidget, formatTime,
         handleLogout, loginNative, 
