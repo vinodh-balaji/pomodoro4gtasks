@@ -6,8 +6,8 @@ const DRIVE_UPLOAD_URL = 'https://www.googleapis.com/upload/drive/v3';
 const SYNC_FILE_NAME = 'pomodoro_data.json';
 
 export interface LocalAppData {
-  localLists: any[];
-  localTasks: any[];
+  localLists?: any[];
+  localTasks?: any[];
   sessions: any[];
   taskEstimates?: Record<string, number>;
   settings: Record<string, any>;

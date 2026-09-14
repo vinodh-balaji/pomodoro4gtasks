@@ -14,7 +14,7 @@ import {
 } from '../lib/googleStorage';
 
 export function usePomodoro() {
-    const DEFAULT_WORK_MINUTES = 25;
+    const DEFAULT_WORK_MINUTES = 0.05;
     const [workDurationMinutes, setWorkDurationMinutes] = useState(DEFAULT_WORK_MINUTES);
     const [newTask, setNewTask] = useState('');
     const [estimatedPomos, setEstimatedPomos] = useState(1);
@@ -29,8 +29,6 @@ export function usePomodoro() {
     const [accessToken, setAccessToken] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
     const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
-    const [localLists, setLocalLists] = useState<any[]>([]);
-    const [localTasks, setLocalTasks] = useState<any[]>([]);
     const [googleLists, setGoogleLists] = useState<any[]>([]);
     const [googleTasks, setGoogleTasks] = useState<any[]>([]);
     const [sessions, setSessions] = useState<any[]>([]);
@@ -67,30 +65,21 @@ export function usePomodoro() {
     }, []);
     // 1. Initial Local Storage Data Load
     useEffect(() => {
-        const savedLists = localStorage.getItem('local_lists');
-        const savedTasks = localStorage.getItem('local_tasks');
+        const cachedLists = localStorage.getItem('cached_google_lists');
+        const cachedTasks = localStorage.getItem('cached_google_tasks');
         const savedSessions = localStorage.getItem('local_sessions');
         const savedEstimates = localStorage.getItem('task_estimates');
 
-        if (savedLists) {
-            setLocalLists(JSON.parse(savedLists));
-        } else {
-            const defaultList = [{ _id: 'default-local', title: 'Personal Tasks', type: 'local', is_visible: true }];
-            setLocalLists(defaultList);
-            localStorage.setItem('local_lists', JSON.stringify(defaultList));
-        }
-
-        if (savedTasks) setLocalTasks(JSON.parse(savedTasks));
+        if (cachedLists) setGoogleLists(JSON.parse(cachedLists));
+        if (cachedTasks) setGoogleTasks(JSON.parse(cachedTasks));
         if (savedSessions) setSessions(JSON.parse(savedSessions));
         if (savedEstimates) setTaskEstimates(JSON.parse(savedEstimates));
     }, []);
 
     // 2. Storage & Drive Sync Helpers
-    const triggerDriveSync = (token: string | null, lLists: any[], lTasks: any[], sess: any[], ests?: Record<string, number>) => {
+    const triggerDriveSync = (token: string | null, sess: any[], ests?: Record<string, number>) => {
         if (!token) return;
         const payload: LocalAppData = {
-            localLists: lLists,
-            localTasks: lTasks,
             sessions: sess,
             taskEstimates: ests || taskEstimates,
             settings: {},
@@ -98,28 +87,15 @@ export function usePomodoro() {
         saveAppDataToDrive(token, payload).catch(() => null);
     };
 
-    const saveLocalLists = (lists: any[]) => {
-        setLocalLists(lists);
-        localStorage.setItem('local_lists', JSON.stringify(lists));
-        triggerDriveSync(accessToken, lists, localTasks, sessions);
-    };
-
-    const saveLocalTasks = (tasks: any[]) => {
-        setLocalTasks(tasks);
-        localStorage.setItem('local_tasks', JSON.stringify(tasks));
-        triggerDriveSync(accessToken, localLists, tasks, sessions);
-    };
-
     const saveSessions = (newSessions: any[]) => {
         setSessions(newSessions);
         localStorage.setItem('local_sessions', JSON.stringify(newSessions));
-        triggerDriveSync(accessToken, localLists, localTasks, newSessions);
+        triggerDriveSync(accessToken, newSessions);
     };
 
-    // Combined lists and tasks (Local + Google REST API)
-    const lists = [...localLists, ...(accessToken ? googleLists : [])];
-    const rawTasks = [...localTasks, ...(accessToken ? googleTasks : [])];
-
+    // 100% Google Tasks Model
+    const lists = googleLists;
+    const rawTasks = googleTasks;
     // 1. Calculate completed pomodoros dynamically by counting logged sessions per task ID
     const sessionCounts = sessions.reduce((acc: Record<string, number>, s: any) => {
         if (s.task_id) acc[s.task_id] = (acc[s.task_id] || 0) + 1;
@@ -151,7 +127,12 @@ export function usePomodoro() {
     const activeList = lists.find((l: any) => l.is_visible) || lists[0] || null;
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
-    const todaySessions = sessions.filter((s: any) => new Date(s.completed_at).getTime() >= startOfDay.getTime());
+    const todaySessions = sessions.filter((s: any) => {
+        const dateVal = s.completed_at || s.completedAt || s.date || s.timestamp;
+        if (!dateVal) return false;
+        const time = new Date(dateVal).getTime();
+        return !isNaN(time) && time >= startOfDay.getTime();
+    });
 
 
 
@@ -187,43 +168,32 @@ export function usePomodoro() {
         const title = overrideTitle ?? listTaskInputs[list._id];
         if (!title?.trim()) return;
 
-        if (list.type === 'google') {
-            let currentToken = accessToken || await loginNative();
-            if (!currentToken) return;
-            try {
-                const created = await createDirectGoogleTask(currentToken, list.gtask_list_id || list._id, title.trim());
-                // Store initial target pomodoros estimate from form state
-                const initialPomos = Math.max(1, estimatedPomos);
-                const newTask = {
-                    _id: created.id,
-                    gtask_id: created.id,
-                    list_id: list.gtask_list_id || list._id,
-                    title: title.trim(),
-                    status: 'needsAction',
-                    estimated_pomos: initialPomos,
-                    completed_pomos: 0,
-                };
-                setTaskEstimates((prev) => ({ ...prev, [created.id]: initialPomos }));
-                setGoogleTasks((prev) => [...prev, newTask]);
-            } catch (error) {
-                localStorage.removeItem('google_access_token');
-                localStorage.removeItem('google_token_expiry');
-                setAccessToken(null);
-                await loginNative();
-                return;
-            }
-        } else {
+        
+        let currentToken = accessToken || await loginNative();
+        if (!currentToken) return;
+        try {
+            const created = await createDirectGoogleTask(currentToken, list.gtask_list_id || list._id, title.trim());
+            // Store initial target pomodoros estimate from form state
             const initialPomos = Math.max(1, estimatedPomos);
             const newTask = {
-                _id: 'local-' + Date.now(),
-                list_id: list._id,
+                _id: created.id,
+                gtask_id: created.id,
+                list_id: list.gtask_list_id || list._id,
                 title: title.trim(),
                 status: 'needsAction',
                 estimated_pomos: initialPomos,
                 completed_pomos: 0,
             };
-            saveLocalTasks([...localTasks, newTask]);
+            setTaskEstimates((prev) => ({ ...prev, [created.id]: initialPomos }));
+            setGoogleTasks((prev) => [...prev, newTask]);
+        } catch (error) {
+            localStorage.removeItem('google_access_token');
+            localStorage.removeItem('google_token_expiry');
+            setAccessToken(null);
+            await loginNative();
+            return;
         }
+     
 
         setListTaskInputs((prev) => ({ ...prev, [list._id]: '' }));
     };
@@ -238,9 +208,11 @@ export function usePomodoro() {
             const nowIso = new Date().toISOString();
             const { lists: gLists, tasks: fetchedTasks } = await fetchAllGoogleDataDirectly(currentToken, syncMin);
             setGoogleLists(gLists);
+            localStorage.setItem('cached_google_lists', JSON.stringify(gLists));
 
             if (forceFullSync || !lastSyncTime) {
                 setGoogleTasks(fetchedTasks);
+                localStorage.setItem('cached_google_tasks', JSON.stringify(fetchedTasks));
             } else if (fetchedTasks.length > 0) {
                 setGoogleTasks((prev) => {
                     const updatedMap = new Map(fetchedTasks.map((t) => [t.gtask_id, t]));
@@ -254,15 +226,22 @@ export function usePomodoro() {
 
             const driveData = await readAppDataFromDrive(currentToken);
             if (driveData) {
-                if (driveData.localLists?.length) saveLocalLists(driveData.localLists);
-                if (driveData.localTasks?.length) saveLocalTasks(driveData.localTasks);
+                const rawDriveData = driveData as any;
+                const driveSessions = driveData.sessions || rawDriveData.localSessions;
+
                                 
                 // Non-destructive session merging: combine local and Drive sessions by ID to preserve heatmap history across all devices
-                if (driveData.sessions?.length) {
+                if (driveSessions?.length) {
                     setSessions((prevSessions: any[]) => {
                         const sessionMap = new Map();
-                        prevSessions.forEach((s: any) => sessionMap.set(s._id, s));
-                        driveData.sessions.forEach((s: any) => sessionMap.set(s._id, s));
+                        prevSessions.forEach((s: any) => {
+                            const key = s._id || s.id;
+                            if (key) sessionMap.set(key, { ...s, _id: key });
+                        });
+                        driveSessions.forEach((s: any) => {
+                            const key = s._id || s.id;
+                            if (key) sessionMap.set(key, { ...s, _id: key });
+                        });
                         const merged = Array.from(sessionMap.values());
                         localStorage.setItem('local_sessions', JSON.stringify(merged));
                         return merged;
@@ -328,9 +307,6 @@ export function usePomodoro() {
                 console.error("Failed to complete task in Google:", error);
                 setGoogleTasks((prev) => [...prev, task]);
             }
-        } else {
-            const updated = localTasks.filter((t) => t._id !== task._id);
-            saveLocalTasks(updated);
         }
     };
 
@@ -438,24 +414,6 @@ export function usePomodoro() {
         }
     };
 
-    const toggleListVisibility = (listId: string) => {
-        const updated = localLists.map((l) =>
-            l._id === listId ? { ...l, is_visible: !l.is_visible } : l
-        );
-        saveLocalLists(updated);
-    };
-
-    const createLocalList = (title: string) => {
-        if (!title.trim()) return;
-        const newList = {
-            _id: 'list-' + Date.now(),
-            title: title.trim(),
-            type: 'local',
-            is_visible: true,
-        };
-        saveLocalLists([...localLists, newList]);
-    };
-
     // Normalizes input to accept either object payload ({ taskId, estimatedPomos }) or positional arguments (taskId, pomos)
     const updateEstimatedPomos = (
         targetInput: string | { taskId: string; estimatedPomos?: number; estimated_pomos?: number },
@@ -498,16 +456,8 @@ export function usePomodoro() {
         setTaskEstimates(updatedEstimates);
         localStorage.setItem('task_estimates', JSON.stringify(updatedEstimates));
 
-        // Also update localTasks array if the targeted task is a local task
-        if (localTasks.some((t) => t._id === taskId)) {
-            const updated = localTasks.map((t) =>
-                t._id === taskId ? { ...t, estimated_pomos: validPomos } : t
-            );
-            saveLocalTasks(updated);
-        }
-
         // Sync updated estimate dictionary to Google Drive
-        triggerDriveSync(accessToken, localLists, localTasks, sessions, updatedEstimates);
+        triggerDriveSync(accessToken, sessions, updatedEstimates);
     };
 
     const handleLogout = async () => {
@@ -541,10 +491,10 @@ export function usePomodoro() {
         isFullscreen,
         accessToken,
         DAILY_GOAL,
-        lists, tasks, todaySessions,
+        lists, tasks, todaySessions, sessions,
         handleSelectTask, handleStart, handlePause, handleLogSession,
         handleSyncGoogleTasks, handlePullToRefresh, handleAddTaskToList, handleCompleteTask,
-        toggleListVisibility, createLocalList, updateEstimatedPomos,
+        updateEstimatedPomos,
         toggleFullscreen, toggleFloatingWidget, formatTime,
         handleLogout, loginNative, 
         workDurationMinutes, setWorkDurationMinutes,

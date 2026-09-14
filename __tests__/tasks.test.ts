@@ -33,20 +33,7 @@ describe('Automated Task Creation Suite', () => {
     vi.clearAllMocks();
   });
 
-  it('inserts a task into a local list via LocalStorage persistence', async () => {
-    const { result } = renderHook(() => usePomodoro());
-    const localList = { _id: 'default-local', type: 'local' };
-
-    await act(async () => {
-      await result.current.handleAddTaskToList(localList, 'Buy Groceries');
-    });
-
-    const saved = JSON.parse(localStorage.getItem('local_tasks') || '[]');
-    expect(saved.length).toBe(1);
-    expect(saved[0].title).toBe('Buy Groceries');
-    expect(saved[0].list_id).toBe('default-local');
-  });
-
+  
   it('triggers direct Google Tasks API request when adding to a Google list', async () => {
     localStorage.setItem('google_access_token', 'mock-google-token');
     localStorage.setItem('google_token_expiry', (Date.now() + 3600000).toString());

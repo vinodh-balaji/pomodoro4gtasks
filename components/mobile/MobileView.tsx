@@ -22,7 +22,6 @@ export default function MobileView(props: any) {
         handleSyncGoogleTasks,
         handleAddTaskToList,
         handleCompleteTask,
-        createLocalList,
         updateEstimatedPomos,
         handleLogout,
         loginNative,
@@ -35,27 +34,73 @@ export default function MobileView(props: any) {
     const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
     const [selectedListId, setSelectedListId] = useState<string | null>(null);
     const [quickTaskTitle, setQuickTaskTitle] = useState('');
+    const { todaySessions = [], DAILY_GOAL = 8 } = props;
     const [pullY, setPullY] = useState(0);
+    const [swipeX, setSwipeX] = useState(0);
+    const [isDragging, setIsDragging] = useState(false);
     const touchStartY = useRef(0);
+    const touchStartX = useRef(0);
+    const touchDirection = useRef<'x' | 'y' | null>(null);
 
     // Swipe-to-refresh gesture handlers
     const handleTouchStart = (e: React.TouchEvent) => {
-        if (e.currentTarget.scrollTop === 0) {
-            touchStartY.current = e.touches[0].clientY;
-        }
+        touchStartX.current = e.touches[0].clientX;
+        touchStartY.current = e.touches[0].clientY;
+        touchDirection.current = null;
+        setIsDragging(true);
     };
 
     const handleTouchMove = (e: React.TouchEvent) => {
-        if (touchStartY.current > 0 && e.currentTarget.scrollTop === 0) {
-            const dist = e.touches[0].clientY - touchStartY.current;
-            if (dist > 0 && dist < 100) setPullY(dist);
+        const deltaX = e.touches[0].clientX - touchStartX.current;
+        const deltaY = e.touches[0].clientY - touchStartY.current;
+
+        // Lock swipe direction on initial movement
+        if (!touchDirection.current) {
+            if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
+                touchDirection.current = Math.abs(deltaX) > Math.abs(deltaY) ? 'x' : 'y';
+            }
+        }
+
+        if (touchDirection.current === 'x') {
+            setSwipeX(deltaX);
+        } else if (touchDirection.current === 'y' && e.currentTarget.scrollTop === 0 && deltaY > 0) {
+            if (deltaY < 180) setPullY(deltaY);
         }
     };
 
     const handleTouchEnd = async () => {
-        if (pullY > 50) await handleSyncGoogleTasks(true);
+        setIsDragging(false);
+
+        if (touchDirection.current === 'x' && Math.abs(swipeX) > 70) {
+            if (activeTab === 'board') {
+                const currentListIndex = visibleLists.findIndex((l: any) => l._id === activeList?._id);
+
+                if (swipeX < 0) {
+                    // Swipe Left: Move to Next Task List
+                    if (currentListIndex < visibleLists.length - 1) {
+                        setSelectedListId(visibleLists[currentListIndex + 1]._id);
+                    } else {
+                        // At final list: Switch to Timer tab
+                        setActiveTab('dashboard');
+                    }
+                } else {
+                    // Swipe Right: Move to Previous Task List
+                    if (currentListIndex > 0) {
+                        setSelectedListId(visibleLists[currentListIndex - 1]._id);
+                    }
+                }
+            } else {
+                const tabs: ('board' | 'dashboard' | 'analytics')[] = ['board', 'dashboard', 'analytics'];
+                const currentIndex = tabs.indexOf(activeTab);
+                if (swipeX < 0 && currentIndex < tabs.length - 1) setActiveTab(tabs[currentIndex + 1]);
+                if (swipeX > 0 && currentIndex > 0) setActiveTab(tabs[currentIndex - 1]);
+            }
+        }
+        if (pullY > 60) await handleSyncGoogleTasks(true);
         setPullY(0);
+        setSwipeX(0);
         touchStartY.current = 0;
+        touchDirection.current = null;
     };
 
     const visibleLists = lists?.filter((l: any) => l.is_visible) || [];
@@ -107,39 +152,11 @@ export default function MobileView(props: any) {
                                 </button>
                             </div>
 
-                            {/* Local Lists */}
-                            <div>
-                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Local Lists</span>
-                                <div className="space-y-1">
-                                    {lists?.filter((l: any) => l.type === 'local').map((list: any) => {
-                                        const count = tasks?.filter((t: any) => t.list_id === list._id && t.status !== 'completed').length || 0;
-                                        const isSelected = activeList?._id === list._id;
-                                        return (
-                                            <button
-                                                key={list._id}
-                                                onClick={() => {
-                                                    setSelectedListId(list._id);
-                                                    setIsDrawerOpen(false);
-                                                }}
-                                                className={`w-full p-3 rounded-xl text-left text-sm font-semibold flex items-center justify-between active:scale-[0.97] transition-transform ${
-                                                    isSelected ? 'bg-indigo-50 text-indigo-700 border border-indigo-100 font-bold' : 'text-slate-700 active:bg-slate-100'
-                                                }`}
-                                            >
-                                                <span className="truncate">📁 {list.title}</span>
-                                                <span className={`text-xs px-2 py-0.5 rounded-lg ${isSelected ? 'bg-indigo-100 text-indigo-700 font-bold' : 'bg-slate-100 text-slate-500'}`}>
-                                                    {count}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
                             {/* Google Lists */}
                             <div>
                                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Google Tasks</span>
                                 <div className="space-y-1">
-                                    {lists?.filter((l: any) => l.type === 'google').map((list: any) => {
+                                    {lists?.map((list: any) => {
                                         const count = tasks?.filter((t: any) => t.list_id === list._id && t.status !== 'completed').length || 0;
                                         const isSelected = activeList?._id === list._id;
                                         return (
@@ -175,12 +192,7 @@ export default function MobileView(props: any) {
                                     className="flex-1 text-xs bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-400"
                                 />
                                 <button
-                                    onClick={() => {
-                                        if (newListTitle.trim()) {
-                                            createLocalList({ title: newListTitle });
-                                            setNewListTitle('');
-                                        }
-                                    }}
+                                    onClick={() => setNewListTitle('')}
                                     className="bg-indigo-600 active:bg-indigo-700 text-white text-xs px-3 py-2 rounded-xl font-bold active:scale-90 transition-transform shadow-xs"
                                 >
                                     +
@@ -364,8 +376,12 @@ export default function MobileView(props: any) {
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
-                className="flex-1 overflow-y-auto px-4 py-4 space-y-4 pb-24 transition-transform duration-75"
-                style={{ transform: pullY > 0 ? `translateY(${pullY * 0.4}px)` : 'none' }}
+                className="flex-1 overflow-y-auto px-4 py-4 space-y-4 pb-24"
+                style={{
+                    transform: `translate3d(${swipeX}px, ${pullY > 0 ? pullY * 0.4 : 0}px, 0)`,
+                    transition: isDragging ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
+                    willChange: 'transform',
+                }}
             >
                 {pullY > 20 && (
                     <div className="text-center text-xs font-bold text-slate-400 py-1 animate-pulse">
@@ -384,6 +400,16 @@ export default function MobileView(props: any) {
                 ) : activeTab === 'dashboard' ? (
                     /* TIMER VIEW */
                     <div className="flex flex-col items-center justify-center space-y-6 pt-4">
+                        {/* Today's Goal Tracker */}
+                        <div className="w-full max-w-xs bg-white p-3 rounded-2xl border border-slate-200/80 space-y-1.5 shadow-2xs">
+                            <div className="flex justify-between items-center text-xs font-bold text-slate-600">
+                                <span>Today's Progress</span>
+                                <span className="font-mono text-indigo-600">{todaySessions.length} / {DAILY_GOAL} Pomodoros</span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                <div className="bg-indigo-600 h-full transition-all duration-300" style={{ width: `${Math.min(100, (todaySessions.length / DAILY_GOAL) * 100)}%` }} />
+                            </div>
+                        </div>
                         <div className="px-4 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-semibold max-w-[90%] truncate">
                             🎯 {activeTask ? activeTask.title : 'No active task selected'}
                         </div>

@@ -41,7 +41,9 @@ export default function AnalyticsView({ sessions = [], DAILY_GOAL = 8 }: Analyti
             </div>
 
             {/* Heatmap Activity Section */}
-            <Heatmap sessions={sessions} />
+            <div className="w-full overflow-x-auto min-h-[160px] scrollbar-thin">
++                <Heatmap sessions={sessions} />
++            </div>
         </div>
     );
 }

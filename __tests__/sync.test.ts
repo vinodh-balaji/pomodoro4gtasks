@@ -83,8 +83,9 @@ describe('Automated Hybrid Sync Suite', () => {
 
 
   it('merges drive sessions with local sessions without overwriting historical heatmap data', async () => {
-    const localSession = { _id: 'sess-local-1', completed_at: '2026-09-13T10:00:00.000Z', duration_minutes: 25, task_id: 't1' };
-    const remoteSession = { _id: 'sess-remote-2', completed_at: '2026-09-13T11:00:00.000Z', duration_minutes: 25, task_id: 't2' };
+    const now = new Date().toISOString();
+    const localSession = { _id: 'sess-local-1', completed_at: now, duration_minutes: 25, task_id: 't1' };
+    const remoteSession = { _id: 'sess-remote-2', completed_at: now, duration_minutes: 25, task_id: 't2' };
 
     localStorage.setItem('local_sessions', JSON.stringify([localSession]));
     vi.mocked(readAppDataFromDrive).mockResolvedValueOnce({
