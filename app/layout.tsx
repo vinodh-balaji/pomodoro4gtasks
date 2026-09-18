@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pomodoro 4 Gtasks",
-  description: "Pomodoro task manager linked with Google Tasks",
+  title: "PomoSync - Focus Timer & Task Sync",
+  description: "Sync your Pomodoro focus sessions with Google Tasks.",
 };
 
 export const viewport: Viewport = {

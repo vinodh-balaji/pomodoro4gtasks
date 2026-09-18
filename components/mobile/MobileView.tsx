@@ -375,7 +375,11 @@ export default function MobileView(props: any) {
 
             {/* ================= 3. TOP NAVIGATION HEADER ================= */}
             <header className="px-4 py-3 bg-white/90 backdrop-blur-md border-b border-slate-200/70 flex items-center justify-between shrink-0 z-40">
+<<<<<<< HEAD
                 {/* Left: Brand Logo + Lists Drawer Trigger */}
+=======
+               {/* Left: Brand Logo + Lists Drawer Trigger */}
+>>>>>>> 32d8614 (Few more UI Fixes)
                 <div className="flex items-center gap-2.5">
                     <img 
                         src="/icon.png" 
@@ -391,11 +395,35 @@ export default function MobileView(props: any) {
                                 }
                             }, 0);
                         }}
+<<<<<<< HEAD
                         className="flex items-center gap-1 text-indigo-600 font-bold text-xs bg-indigo-50 active:bg-indigo-100 px-2.5 py-1.5 rounded-xl border border-indigo-100/80 active:scale-95 transition-transform"
+=======
+                        className="flex items-center gap-1.5 text-indigo-600 font-bold text-sm bg-indigo-50 active:bg-indigo-100 px-3 py-1.5 rounded-xl border border-indigo-100 active:scale-95 transition-transform"
+>>>>>>> 32d8614 (Few more UI Fixes)
                     >
                         <span>‹</span>
                         <span>Lists</span>
                     </button>
+<<<<<<< HEAD
+=======
+                </div>
+                {/* Center: Dynamic Header Title based on Active Tab */}
+                <div className="text-center">
+                    <h1 className="text-base font-bold text-slate-900 leading-none">
+                        {activeTab === 'dashboard'
+                            ? 'PomoSync Timer'
+                            : activeTab === 'analytics'
+                            ? 'PomoSync Stats'
+                            : activeList?.title || 'Tasks'}
+                    </h1>
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mt-0.5">
+                        {activeTab === 'dashboard'
+                            ? 'Focus'
+                            : activeTab === 'analytics'
+                            ? 'Analytics'
+                            : activeList?.type || 'Local'}
+                    </span>
+>>>>>>> 32d8614 (Few more UI Fixes)
                 </div>
 
                 {/* Center: Dynamic Header Title based on Active Tab */}

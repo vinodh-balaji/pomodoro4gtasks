@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import { App } from '@capacitor/app';
 import { SocialLogin } from '@capgo/capacitor-social-login';
 import { playCompletionChime, requestNotificationPermission, sendCompletionNotification } from '../lib/audio';
@@ -37,6 +38,33 @@ export function usePomodoro() {
     const [taskEstimates, setTaskEstimates] = useState<Record<string, number>>({});
     const DAILY_GOAL = 8;
 
+
+
+    // 1. Request Notification Permissions on Hook Initialization
+    useEffect(() => {
+        LocalNotifications.requestPermissions().catch((err) =>
+            console.error('Notification permission error:', err)
+        );
+    }, []);
+
+    // 2. Recalculate remaining seconds when phone unlocks / app resumes
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && isRunning) {
+                const savedEndTime = localStorage.getItem('pomo_target_end_time');
+                if (savedEndTime) {
+                    const remaining = Math.max(0, Math.round((parseInt(savedEndTime, 10) - Date.now()) / 1000));
+                    setSeconds(remaining);
+                    if (remaining === 0) {
+                        handleLogSession();
+                    }
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [isRunning]);
     // Social Login Init
     useEffect(() => {
         const initAuth = async () => {
@@ -128,34 +156,11 @@ export function usePomodoro() {
     const activeList = lists.find((l: any) => l.is_visible) || lists[0] || null;
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
-    console.log('[SESSION DIAGNOSTIC] --- Run Check ---', {
-        localMidnight: startOfDay.toLocaleString(),
-        localMidnightIso: startOfDay.toISOString(),
-        startOfDayEpoch: startOfDay.getTime(),
-        totalSessionsInState: sessions.length,
-    });
-
-    const todaySessions = sessions.filter((s: any, idx: number) => {
+    const todaySessions = sessions.filter((s: any) => {
         const dateVal = s.completed_at || s.completedAt || s.date || s.timestamp || s._id?.replace('sess-', '');
-        if (!dateVal) {
-            console.warn(`[SESSION DIAGNOSTIC] Session #${idx} (${s._id || s.id}) missing timestamp:`, s);
-            return false;
-        }
+        if (!dateVal) return false;
         const time = new Date(dateVal).getTime();
-        const parsedDate = new Date(time);
-        const isToday = !isNaN(time) && time >= startOfDay.getTime();
-
-        console.log(`[SESSION DIAGNOSTIC] Session #${idx + 1}/${sessions.length}`, {
-            sessionId: s._id || s.id,
-            taskTitle: s.task_id,
-            rawDateVal: dateVal,
-            parsedLocal: parsedDate.toLocaleString(),
-            parsedUtc: parsedDate.toUTCString(),
-            sessionEpoch: time,
-            passedIsToday: isToday,
-        });
-
-        return isToday;
+        return !isNaN(time) && time >= startOfDay.getTime();
     });
 
     const handleDeleteSession = (sessionId: string) => {
@@ -364,15 +369,36 @@ export function usePomodoro() {
 
     const handleSelectTask = (taskId: string) => setSelectedTaskId(taskId);
     
-    const handleStart = () => {
+    const handleStart = async () => {
+        const targetEndTime = Date.now() + seconds * 1000;
+        localStorage.setItem('pomo_target_end_time', targetEndTime.toString());
+
+        await LocalNotifications.schedule({
+            notifications: [
+                {
+                    title: 'Pomodoro Completed! 🍅',
+                    body: selectedTaskId ? 'Focus session finished! Time for a break.' : 'Great job! Your focus session is complete.',
+                    id: 101,
+                    schedule: { at: new Date(targetEndTime) },
+                    sound: 'default',
+                },
+            ],
+        }).catch((err) => console.error('Failed to schedule notification:', err));
         setIsRunning(true);
         setActiveTab('dashboard');
         requestNotificationPermission();
     };
 
-    const handlePause = () => setIsRunning(false);
+    const handlePause = async () => {
+        localStorage.removeItem('pomo_target_end_time');
+        await LocalNotifications.cancel({ notifications: [{ id: 101 }] }).catch(() => {});
+        setIsRunning(false);
+    };
 
     const handleLogSession = async () => {
+        localStorage.removeItem('pomo_target_end_time');
+        await LocalNotifications.cancel({ notifications: [{ id: 101 }] }).catch(() => {});
+
         const newSession = {
             _id: 'sess-' + Date.now(),
             completed_at: new Date().toISOString(),
