@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.yourname.taskspomodoro',
-  appName: 'tasks-pomodoro',
+  appId: 'io.github.vinodh-balaji.pomosync',
+  appName: 'PomoSync - Focus Timer & Task Sync',
   webDir: 'out',
   server: {
     iosScheme: 'https',

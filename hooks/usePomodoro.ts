@@ -15,7 +15,7 @@ import {
 } from '../lib/googleStorage';
 
 export function usePomodoro() {
-    const DEFAULT_WORK_MINUTES = 0.5;
+    const DEFAULT_WORK_MINUTES = 25;
     const [workDurationMinutes, setWorkDurationMinutes] = useState(DEFAULT_WORK_MINUTES);
     const [newTask, setNewTask] = useState('');
     const [estimatedPomos, setEstimatedPomos] = useState(1);

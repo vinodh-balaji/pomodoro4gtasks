@@ -33,6 +33,11 @@ export default function MobileView(props: any) {
     } = props;
 
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [showSplash, setShowSplash] = useState(true);
+    React.useEffect(() => {
+        const timer = setTimeout(() => setShowSplash(false), 1800);
+        return () => clearTimeout(timer);
+    }, []);
     const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
     const [selectedListId, setSelectedListId] = useState<string | null>(null);
     const [quickTaskTitle, setQuickTaskTitle] = useState('');
@@ -41,6 +46,7 @@ export default function MobileView(props: any) {
     const [pullY, setPullY] = useState(0);
     const [swipeX, setSwipeX] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
+    const [slideDirection, setSlideDirection] = useState<'next' | 'prev'>('next');
     const touchStartY = useRef(0);
     const touchStartX = useRef(0);
     const touchDirection = useRef<'x' | 'y' | null>(null);
@@ -74,29 +80,41 @@ export default function MobileView(props: any) {
     const handleTouchEnd = async () => {
         setIsDragging(false);
 
-        if (touchDirection.current === 'x' && Math.abs(swipeX) > 70) {
+        if (touchDirection.current === 'x' && Math.abs(swipeX) > 45) {
             if (activeTab === 'board') {
-                const currentListIndex = visibleLists.findIndex((l: any) => l._id === activeList?._id);
+                const currentListIndex = visibleLists.findIndex((l: any) => String(l._id) === String(activeList?._id));
 
                 if (swipeX < 0) {
                     // Swipe Left: Move to Next Task List
                     if (currentListIndex < visibleLists.length - 1) {
+                        setSlideDirection('next');
                         setSelectedListId(visibleLists[currentListIndex + 1]._id);
                     } else {
                         // At final list: Switch to Timer tab
+                        setSlideDirection('next');
                         setActiveTab('dashboard');
                     }
                 } else {
                     // Swipe Right: Move to Previous Task List
                     if (currentListIndex > 0) {
+                        setSlideDirection('prev');
                         setSelectedListId(visibleLists[currentListIndex - 1]._id);
+                    } else {
+                        // At first list: Open Left Task Drawer
+                        setIsDrawerOpen(true);
                     }
                 }
             } else {
                 const tabs: ('board' | 'dashboard' | 'analytics')[] = ['board', 'dashboard', 'analytics'];
                 const currentIndex = tabs.indexOf(activeTab);
-                if (swipeX < 0 && currentIndex < tabs.length - 1) setActiveTab(tabs[currentIndex + 1]);
-                if (swipeX > 0 && currentIndex > 0) setActiveTab(tabs[currentIndex - 1]);
+                if (swipeX < 0 && currentIndex < tabs.length - 1) {
+                    setSlideDirection('next');
+                    setActiveTab(tabs[currentIndex + 1]);
+                }
+                if (swipeX > 0 && currentIndex > 0) {
+                    setSlideDirection('prev');
+                    setActiveTab(tabs[currentIndex - 1]);
+                }
             }
         }
         if (pullY > 60) await handleSyncGoogleTasks(true);
@@ -135,21 +153,33 @@ export default function MobileView(props: any) {
 
     return (
         <div className="flex flex-col h-screen bg-slate-100 text-slate-800 select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] relative overflow-hidden font-sans antialiased">
+            {/* Animated Splash Screen Overlay */}
+            {showSplash && (
+                <div className="fixed inset-0 bg-slate-950 z-50 flex flex-col items-center justify-center transition-opacity duration-500">
+                    <div className="flex flex-col items-center gap-3 animate-pulse">
+                        <img src="/icon.png" alt="PomoSync" className="w-20 h-20 rounded-2xl shadow-2xl border border-white/10 object-cover" />
+                        <span className="text-2xl font-extrabold text-white tracking-tight">PomoSync</span>
+                    </div>
+                </div>
+            )}
 
             {/* ================= 1. LEFT MENU DRAWER & SETTINGS ================= */}
             {isDrawerOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex transition-opacity duration-150">
-                    <div className="w-[85%] max-w-[320px] bg-white h-full shadow-2xl flex flex-col justify-between p-5 border-r border-slate-200">
+                    <div className="w-[85%] max-w-[320px] bg-white h-full shadow-2xl flex flex-col justify-between p-5 pt-[calc(env(safe-area-inset-top)+1.25rem)] pb-[calc(env(safe-area-inset-bottom)+1.25rem)] border-r border-slate-200">
                         <div className="space-y-6 overflow-y-auto">
                             {/* Drawer Header */}
                             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                                <div className="flex items-center gap-2">
-                                    <span className="w-3 h-3 rounded-full bg-indigo-600"></span>
-                                    <h2 className="text-lg font-bold text-slate-900">Task Lists</h2>
+                                <div className="flex items-center gap-2.5 shrink-0">
+                                    <img src="/icon.png" alt="PomoSync" className="w-8 h-8 rounded-xl object-cover border border-slate-100 shadow-xs" />
+                                    <div>
+                                        <h2 className="text-base font-bold text-slate-900 leading-none">PomoSync</h2>
+                                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mt-1">Task Lists</span>
+                                    </div>
                                 </div>
                                 <button
                                     onClick={() => setIsDrawerOpen(false)}
-                                    className="w-8 h-8 rounded-full bg-slate-100 active:bg-slate-200 text-slate-500 font-bold flex items-center justify-center text-xs active:scale-90 transition-transform"
+                                    className="w-8 h-8 rounded-full bg-slate-100 active:bg-slate-200 text-slate-500 font-bold flex items-center justify-center text-xs active:scale-90 transition-transform shrink-0"
                                 >
                                     ✕
                                 </button>
@@ -345,34 +375,54 @@ export default function MobileView(props: any) {
 
             {/* ================= 3. TOP NAVIGATION HEADER ================= */}
             <header className="px-4 py-3 bg-white/90 backdrop-blur-md border-b border-slate-200/70 flex items-center justify-between shrink-0 z-40">
-                <button
-                    onClick={() => {
-                        setIsDrawerOpen(true);
-                        // Pushes network/auth work to the next event loop tick after DOM paint
-                        setTimeout(() => {
-                            if (accessToken) {
-                                handleSyncGoogleTasks(true);
-                            }
-                        }, 0);
-                    }}
-                    className="flex items-center gap-1.5 text-indigo-600 font-bold text-sm bg-indigo-50 active:bg-indigo-100 px-3.5 py-1.5 rounded-xl border border-indigo-100 active:scale-95 transition-transform"
-                >
-                    <span>‹</span>
-                    <span>Lists</span>
-                </button>
-                <div className="text-center">
-                    <h1 className="text-base font-bold text-slate-900 leading-none">{activeList?.title || 'Tasks'}</h1>
-                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{activeList?.type || 'Local'}</span>
+                {/* Left: Brand Logo + Lists Drawer Trigger */}
+                <div className="flex items-center gap-2.5">
+                    <img 
+                        src="/icon.png" 
+                        alt="PomoSync" 
+                        className="w-8 h-8 rounded-xl shadow-xs object-cover border border-slate-100" 
+                    />
+                    <button
+                        onClick={() => {
+                            setIsDrawerOpen(true);
+                            setTimeout(() => {
+                                if (accessToken) {
+                                    handleSyncGoogleTasks(true);
+                                }
+                            }, 0);
+                        }}
+                        className="flex items-center gap-1 text-indigo-600 font-bold text-xs bg-indigo-50 active:bg-indigo-100 px-2.5 py-1.5 rounded-xl border border-indigo-100/80 active:scale-95 transition-transform"
+                    >
+                        <span>‹</span>
+                        <span>Lists</span>
+                    </button>
                 </div>
+
+                {/* Center: Dynamic Header Title based on Active Tab */}
+                <div className="text-center">
+                <h1 className="text-base font-bold text-slate-900 leading-none">
+                        {activeTab === 'dashboard'
+                            ? 'PomoSync Timer'
+                            : activeTab === 'analytics'
+                            ? 'PomoSync Stats'
+                            : activeList?.title || 'Tasks'}
+                    </h1>
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mt-0.5">
+                        {activeTab === 'dashboard'
+                            ? 'Focus'
+                            : activeTab === 'analytics'
+                            ? 'Analytics'
+                            : activeList?.type || 'Local'}
+                    </span></div>
                 <button
                     onClick={handleSyncGoogleTasks}
                     className="px-3.5 py-1.5 rounded-full bg-emerald-50 active:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200/60 active:scale-95 transition-transform"
                 >
                     {isSyncing ? (
-                        <>
+                        <span className="flex items-center gap-1">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                             <span>Syncing...</span>
-                        </>
+                        </span>
                     ) : (
                         <span>Sync</span>
                     )}
@@ -396,6 +446,23 @@ export default function MobileView(props: any) {
                         {pullY > 50 ? 'Release to refresh Google Tasks...' : 'Pull down to refresh'}
                     </div>
                 )}
+                <style>{`
+                    @keyframes slideInNext {
+                        0% { transform: translateX(36px); opacity: 0.5; }
+                        100% { transform: translateX(0); opacity: 1; }
+                    }
+                    @keyframes slideInPrev {
+                        0% { transform: translateX(-36px); opacity: 0.5; }
+                        100% { transform: translateX(0); opacity: 1; }
+                    }
+                    .animate-slide-next { animation: slideInNext 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+                    .animate-slide-prev { animation: slideInPrev 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+                `}</style>
+                <div 
+                    key={activeTab === 'board' ? (activeList?._id || 'board') : activeTab}
+                    className={slideDirection === 'next' ? 'animate-slide-next' : 'animate-slide-prev'}
+                >
+
                 {activeTab === 'analytics' ? (
                     <div className="space-y-4">
                         <div className="flex items-center justify-between px-1">
@@ -633,6 +700,7 @@ export default function MobileView(props: any) {
                         )}
                     </div>
                 )}
+                </div>
             </main>
 
             {/* ================= 5. FLOATING NATIVE TAB BAR ================= */}
