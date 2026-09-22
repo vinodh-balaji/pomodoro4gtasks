@@ -35,7 +35,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {  
   // Replace with your actual Google Analytics Measurement ID
-  const GA_MEASUREMENT_ID = "G-XXXXXXXXXX"; 
+  const GA_MEASUREMENT_ID = "G-0XWZMT9TTH"; 
 
   return (
     <html lang="en">
