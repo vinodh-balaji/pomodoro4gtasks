@@ -375,11 +375,7 @@ export default function MobileView(props: any) {
 
             {/* ================= 3. TOP NAVIGATION HEADER ================= */}
             <header className="px-4 py-3 bg-white/90 backdrop-blur-md border-b border-slate-200/70 flex items-center justify-between shrink-0 z-40">
-<<<<<<< HEAD
-                {/* Left: Brand Logo + Lists Drawer Trigger */}
-=======
                {/* Left: Brand Logo + Lists Drawer Trigger */}
->>>>>>> 32d8614 (Few more UI Fixes)
                 <div className="flex items-center gap-2.5">
                     <img 
                         src="/icon.png" 
@@ -389,23 +385,15 @@ export default function MobileView(props: any) {
                     <button
                         onClick={() => {
                             setIsDrawerOpen(true);
-                            setTimeout(() => {
-                                if (accessToken) {
-                                    handleSyncGoogleTasks(true);
-                                }
-                            }, 0);
+                            if (accessToken) {
+                                handleSyncGoogleTasks(true);
+                            }
                         }}
-<<<<<<< HEAD
-                        className="flex items-center gap-1 text-indigo-600 font-bold text-xs bg-indigo-50 active:bg-indigo-100 px-2.5 py-1.5 rounded-xl border border-indigo-100/80 active:scale-95 transition-transform"
-=======
                         className="flex items-center gap-1.5 text-indigo-600 font-bold text-sm bg-indigo-50 active:bg-indigo-100 px-3 py-1.5 rounded-xl border border-indigo-100 active:scale-95 transition-transform"
->>>>>>> 32d8614 (Few more UI Fixes)
                     >
                         <span>‹</span>
                         <span>Lists</span>
                     </button>
-<<<<<<< HEAD
-=======
                 </div>
                 {/* Center: Dynamic Header Title based on Active Tab */}
                 <div className="text-center">
@@ -423,29 +411,12 @@ export default function MobileView(props: any) {
                             ? 'Analytics'
                             : activeList?.type || 'Local'}
                     </span>
->>>>>>> 32d8614 (Few more UI Fixes)
                 </div>
-
-                {/* Center: Dynamic Header Title based on Active Tab */}
-                <div className="text-center">
-                <h1 className="text-base font-bold text-slate-900 leading-none">
-                        {activeTab === 'dashboard'
-                            ? 'PomoSync Timer'
-                            : activeTab === 'analytics'
-                            ? 'PomoSync Stats'
-                            : activeList?.title || 'Tasks'}
-                    </h1>
-                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mt-0.5">
-                        {activeTab === 'dashboard'
-                            ? 'Focus'
-                            : activeTab === 'analytics'
-                            ? 'Analytics'
-                            : activeList?.type || 'Local'}
-                    </span></div>
                 <button
-                    onClick={handleSyncGoogleTasks}
-                    className="px-3.5 py-1.5 rounded-full bg-emerald-50 active:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200/60 active:scale-95 transition-transform"
-                >
+                    onClick={() => handleSyncGoogleTasks(true)}
+                    disabled={isSyncing}
+                    className="px-3.5 py-1.5 rounded-full bg-emerald-50 active:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200/60 active:scale-95 transition-transform disabled:opacity-50"
+                    >
                     {isSyncing ? (
                         <span className="flex items-center gap-1">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
@@ -701,7 +672,12 @@ export default function MobileView(props: any) {
                                         <div className="flex items-center gap-3 min-w-0 pr-2">
                                             <input
                                                 type="checkbox"
-                                                onClick={(e) => handleCompleteTask(task, e)}
+                                                checked={task.completed}
+                                                onChange={(e) => {
+                                                    e.stopPropagation();
+                                                    handleCompleteTask(task, e);
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
                                                 className="w-5 h-5 rounded-md border-2 border-slate-300 text-indigo-600 focus:ring-0 cursor-pointer"
                                             />
                                             <span className={`text-sm font-semibold truncate ${isSelected ? 'text-indigo-950 font-bold' : 'text-slate-800'}`}>
