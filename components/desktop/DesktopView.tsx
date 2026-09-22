@@ -16,6 +16,10 @@ export default function DesktopView(props: any) {
         isFullscreen,
         DAILY_GOAL,
         todaySessions,
+        sessions,
+        accessToken,
+        handleLogout,
+        loginNative,
         setActiveTab,
         setNewListTitle,
         setListTaskInputs,
@@ -56,10 +60,13 @@ export default function DesktopView(props: any) {
             {/* Sidebar Menu */}
             <aside className={`w-full md:w-64 bg-[#1e1e1e] md:border-r border-zinc-800 p-4 flex-col gap-6 shrink-0 select-none overflow-y-auto ${activeTab === 'menu' ? 'flex flex-1' : 'hidden md:flex'}`}>
                 <div className="flex items-center justify-between">
-                    <span className="font-bold text-lg text-blue-400">✓ Tasks</span>
+                    <div className="flex items-center gap-2.5">
+                        <img src="/icon.png" alt="PomoSync" className="w-7 h-7 rounded-lg object-cover" />
+                        <span className="font-bold text-lg text-white tracking-tight">PomoSync</span>
+                    </div>
                     <button
                         onClick={handleSyncGoogleTasks}
-                        className="bg-green-700 hover:bg-green-600 text-xs text-white px-2 py-1 rounded"
+                        className="bg-emerald-700 hover:bg-emerald-600 text-xs text-white px-2.5 py-1 rounded-lg font-bold"
                     >
                         Sync
                     </button>
@@ -122,6 +129,32 @@ export default function DesktopView(props: any) {
                         ))}
                     </div>
                 </div>
+
+                {/* Google Auth Status & Account Card */}
+                <div className="bg-zinc-900 p-3 rounded-xl border border-zinc-800 space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-zinc-400 uppercase tracking-wider text-[10px]">Google Auth</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${accessToken ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-amber-950 text-amber-400 border border-amber-800'}`}>
+                            {accessToken ? 'Connected' : 'Logged Out'}
+                        </span>
+                    </div>
+                    {accessToken ? (
+                        <button
+                            onClick={handleLogout}
+                            className="w-full py-1.5 px-2.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/60 border border-rose-800/60 text-rose-300 font-semibold text-xs transition"
+                        >
+                            🚪 Logout Account
+                        </button>
+                    ) : (
+                        <button
+                            onClick={loginNative}
+                            className="w-full py-1.5 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition shadow-xs"
+                        >
+                            🔑 Sign in with Google
+                        </button>
+                    )}
+                </div>
+
 
                 {/* Quick Local List Creator */}
                 <div className="mt-auto flex gap-2">
@@ -227,7 +260,7 @@ export default function DesktopView(props: any) {
                         </div>
                     </div>
                 ) : activeTab === 'analytics' ? ( 
-                    <AnalyticsView /> 
+                    <AnalyticsView sessions={sessions} tasks={tasks} DAILY_GOAL={DAILY_GOAL} />
                 ) : ( 
                     <>
                         <div className={`border rounded-xl p-4 flex justify-between items-center transition-all duration-300 ${
@@ -301,7 +334,11 @@ export default function DesktopView(props: any) {
                                                     <div className="flex items-center gap-2.5">
                                                         <input
                                                             type="checkbox"
-                                                            onClick={(e) => handleCompleteTask(task, e)}
+                                                            onChange={(e) => {
+                                                                e.stopPropagation();
+                                                                handleCompleteTask(task, e);
+                                                            }}
+                                                            onClick={(e) => e.stopPropagation()}
                                                             className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-0 cursor-pointer"
                                                         />
                                                         <span className="text-sm font-medium text-zinc-200">{task.title}</span>
