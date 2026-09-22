@@ -71,7 +71,7 @@ export function usePomodoro() {
             try {
                 await SocialLogin.initialize({
                     google: {
-                        webClientId: '765553589642-pih5m7le7dvgpetrqtqtffmmdroe31p2.apps.googleusercontent.com',
+                        webClientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '765553589642-pih5m7le7dvgpetrqtqtffmmdroe31p2.apps.googleusercontent.com',
                     },
                 });
             } catch (error) {
