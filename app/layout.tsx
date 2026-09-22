@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Script from "next/script"; // 1. Added Next.js Script component
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,7 +17,7 @@ export const metadata: Metadata = {
   description: "Sync your Pomodoro focus sessions with Google Tasks.",
   manifest: "/manifest.webmanifest",
   verification: {
-    google: "pygjydd1upcF3_vfr5xBMbt-B3-iHq2ICY50lheieho", // Your verified Search Console meta tag
+    google: "pygjydd1upcF3_vfr5xBMbt-B3-iHq2ICY50lheieho",
   },
 };
 
@@ -35,25 +34,27 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {  
-  // 2. Paste your Google Analytics Measurement ID here
-  const GA_MEASUREMENT_ID = "G-0XWZMT9TTH"; 
+  // Replace with your actual Google Analytics Measurement ID
+  const GA_MEASUREMENT_ID = "G-XXXXXXXXXX"; 
 
   return (
     <html lang="en">
       <head>
-        {/* 3. Google Analytics gtag.js inserted into <head> */}
-        <Script
+        {/* Direct HTML script tags so Search Console finds them inside <head> */}
+        <script
+          async
           src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-          strategy="afterInteractive"
         />
-        <Script id="google-analytics" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', '${GA_MEASUREMENT_ID}');
-          `}
-        </Script>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', '${GA_MEASUREMENT_ID}');
+            `,
+          }}
+        />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50 text-slate-900`}>
         {children}
