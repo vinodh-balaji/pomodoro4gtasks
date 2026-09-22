@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "vitest run && next build",
+    "build": "next build",
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "next start",
