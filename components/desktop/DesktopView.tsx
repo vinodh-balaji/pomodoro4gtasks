@@ -83,7 +83,7 @@ export default function DesktopView(props: any) {
                         <div className="flex items-center gap-2.5">
                             <img src="/icon.png" alt="PomoSync" className="w-8 h-8 rounded-xl object-cover border border-white/20 shadow-xs" />
                             <div>
-                                <span className={`font-extrabold text-lg tracking-tight block leading-none ${theme.textPrimary}`}>PomoSync</span>
+                                <span className={`font-extrabold text-lg tracking-tight block leading-none ${theme.textPrimary}`}>Tasks 'n Timers</span>
                                 <span className={`text-[10px] font-semibold uppercase tracking-wider block mt-1 ${theme.textSecondary}`}>Desktop Focus</span>
                             </div>
                         </div>

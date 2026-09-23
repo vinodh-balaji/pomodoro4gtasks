@@ -173,7 +173,7 @@ export default function MobileView(props: any) {
                 <div className="fixed inset-0 bg-slate-950 z-50 flex flex-col items-center justify-center transition-opacity duration-500">
                     <div className="flex flex-col items-center gap-3 animate-pulse">
                         <img src="/icon.png" alt="PomoSync" className="w-20 h-20 rounded-2xl shadow-2xl border border-white/10 object-cover" />
-                        <span className="text-2xl font-extrabold text-white tracking-tight">PomoSync</span>
+                        <span className="text-2xl font-extrabold text-white tracking-tight">Tasks 'n Timers</span>
                     </div>
                 </div>
             )}
@@ -188,7 +188,7 @@ export default function MobileView(props: any) {
                                 <div className="flex items-center gap-2.5 shrink-0">
                                     <img src="/icon.png" alt="PomoSync" className="w-8 h-8 rounded-xl object-cover border border-slate-100 shadow-xs" />
                                     <div>
-                                        <h2 className="text-base font-bold text-slate-900 leading-none">PomoSync</h2>
+                                        <h2 className="text-base font-bold text-slate-900 leading-none">Tasks 'n Timers</h2>
                                         <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mt-1">Task Lists & Themes</span>
                                     </div>
                                 </div>
@@ -534,9 +534,9 @@ export default function MobileView(props: any) {
                 <div className="text-center">
                     <h1 className={`text-base font-bold leading-none ${theme.textPrimary}`}>
                         {activeTab === 'dashboard'
-                            ? 'PomoSync Timer'
+                            ? 'Tasks \'n Timers'
                             : activeTab === 'analytics'
-                            ? 'PomoSync Stats'
+                            ? 'Tasks \'n Timers Stats'
                             : activeList?.title || 'Tasks'}
                     </h1>
                     <span className={`text-[10px] font-semibold uppercase tracking-wider block mt-0.5 ${theme.textSecondary}`}>

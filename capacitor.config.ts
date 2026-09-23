@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'io.github.vinodh-balaji.pomosync',
-  appName: 'PomoSync',
+  appName: "Tasks 'n Timers",
   webDir: 'out',
   server: {
     iosScheme: 'https',
