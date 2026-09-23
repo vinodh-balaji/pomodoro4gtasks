@@ -5,10 +5,12 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { App } from '@capacitor/app';
 import { SocialLogin } from '@capgo/capacitor-social-login';
 import { playCompletionChime, requestNotificationPermission, sendCompletionNotification } from '../lib/audio';
+import { THEMES, DEFAULT_THEME_ID, ThemeConfig } from '../lib/themes';
 import {
     fetchAllGoogleDataDirectly,
     createDirectGoogleTask,
     completeDirectGoogleTask,
+    updateDirectGoogleTask,
     createDirectGoogleList,
     readAppDataFromDrive,
     saveAppDataToDrive,
@@ -17,6 +19,7 @@ import {
 
 export function usePomodoro() {
     const DEFAULT_WORK_MINUTES = 25;
+    const DEFAULT_LOCAL_LIST = { _id: 'local-default', title: 'My Tasks', type: 'local', is_visible: true };
     const [workDurationMinutes, setWorkDurationMinutes] = useState(DEFAULT_WORK_MINUTES);
     const [newTask, setNewTask] = useState('');
     const [estimatedPomos, setEstimatedPomos] = useState(1);
@@ -27,15 +30,35 @@ export function usePomodoro() {
     const [listTaskInputs, setListTaskInputs] = useState<Record<string, string>>({});
     const [activeTab, setActiveTab] = useState<'board' | 'dashboard' | 'analytics' | 'menu'>('board');
     const [isFullscreen, setIsFullscreen] = useState(false);
-    const [pipWindowRef, setPipWindowRef] = useState<Window | null>(null);
     const [accessToken, setAccessToken] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
     const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+    // Google Tasks State
     const [googleLists, setGoogleLists] = useState<any[]>([]);
     const [googleTasks, setGoogleTasks] = useState<any[]>([]);
+    // Local / Guest Fallback State
+    const [localLists, setLocalLists] = useState<any[]>([DEFAULT_LOCAL_LIST]);
+    const [localTasks, setLocalTasks] = useState<any[]>([]);
+
     const [sessions, setSessions] = useState<any[]>([]);
     // Local override store for estimated pomodoros (persists estimates for both local and Google tasks)
     const [taskEstimates, setTaskEstimates] = useState<Record<string, number>>({});
+    const [currentThemeId, setCurrentThemeId] = useState<string>(DEFAULT_THEME_ID);
+
+    // Load saved theme preference
+    useEffect(() => {
+        const savedTheme = localStorage.getItem('pomo_theme');
+        if (savedTheme && THEMES[savedTheme]) {
+            setCurrentThemeId(savedTheme);
+        }
+    }, []);
+
+    const setTheme = (themeId: string) => {
+        if (THEMES[themeId]) {
+            setCurrentThemeId(themeId);
+            localStorage.setItem('pomo_theme', themeId);
+        }
+    };
     const DAILY_GOAL = 8;
 
 
@@ -96,9 +119,13 @@ export function usePomodoro() {
     useEffect(() => {
         const cachedLists = localStorage.getItem('cached_google_lists');
         const cachedTasks = localStorage.getItem('cached_google_tasks');
+        const savedLocalLists = localStorage.getItem('local_lists');
+        const savedLocalTasks = localStorage.getItem('local_tasks');
         const savedSessions = localStorage.getItem('local_sessions');
         const savedEstimates = localStorage.getItem('task_estimates');
 
+        if (savedLocalLists) setLocalLists(JSON.parse(savedLocalLists));
+        if (savedLocalTasks) setLocalTasks(JSON.parse(savedLocalTasks));
         if (cachedLists) setGoogleLists(JSON.parse(cachedLists));
         if (cachedTasks) setGoogleTasks(JSON.parse(cachedTasks));
         if (savedSessions) setSessions(JSON.parse(savedSessions));
@@ -122,9 +149,9 @@ export function usePomodoro() {
         triggerDriveSync(accessToken, newSessions);
     };
 
-    // 100% Google Tasks Model
-    const lists = googleLists;
-    const rawTasks = googleTasks;
+    // Hybrid Local-First & Google Tasks Model
+    const lists = accessToken ? [...localLists, ...googleLists] : localLists;
+    const rawTasks = accessToken ? [...googleTasks, ...localTasks] : localTasks;
     // 1. Calculate completed pomodoros dynamically by counting logged sessions per task ID
     const sessionCounts = sessions.reduce((acc: Record<string, number>, s: any) => {
         if (s.task_id) acc[s.task_id] = (acc[s.task_id] || 0) + 1;
@@ -136,15 +163,6 @@ export function usePomodoro() {
         const matchedEstimate = taskEstimates[t._id] ?? (t.gtask_id ? taskEstimates[t.gtask_id] : undefined);
         const finalEstimate = matchedEstimate ?? (typeof t.estimated_pomos === 'number' && t.estimated_pomos > 0 ? t.estimated_pomos : 1);
         
-        console.log('[DECORATOR TASK READ]', {
-            taskTitle: t.title,
-            _id: t._id,
-            gtask_id: t.gtask_id,
-            matchedEstimateFromMap: matchedEstimate,
-            finalCalculatedEstimate: finalEstimate,
-            fullEstimatesMap: taskEstimates,
-        });
-
         return {
             ...t,
             completed_pomos: sessionCounts[t._id] || (t.gtask_id ? sessionCounts[t.gtask_id] : 0) || 0,
@@ -200,13 +218,29 @@ export function usePomodoro() {
         const title = overrideTitle ?? listTaskInputs[list._id];
         if (!title?.trim()) return;
 
-        
+        const initialPomos = Math.max(1, estimatedPomos);
+
+        // Offline / Local List Task Creation
+        if (!accessToken || list.type === 'local') {
+            const newLocalTask = {
+                _id: 'loc-' + Date.now(),
+                list_id: list._id,
+                title: title.trim(),
+                status: 'needsAction',
+                estimated_pomos: initialPomos,
+                completed_pomos: 0,
+            };
+            const updated = [...localTasks, newLocalTask];
+            setLocalTasks(updated);
+            localStorage.setItem('local_tasks', JSON.stringify(updated));
+            setListTaskInputs((prev) => ({ ...prev, [list._id]: '' }));
+            return;
+        }
         let currentToken = accessToken || await loginNative();
         if (!currentToken) return;
         try {
             const created = await createDirectGoogleTask(currentToken, list.gtask_list_id || list._id, title.trim());
             // Store initial target pomodoros estimate from form state
-            const initialPomos = Math.max(1, estimatedPomos);
             const newTask = {
                 _id: created.id,
                 gtask_id: created.id,
@@ -232,7 +266,20 @@ export function usePomodoro() {
     const handleCreateGoogleList = async (titleOverride?: string) => {
         const title = titleOverride || newListTitle;
         if (!title.trim()) return;
-
+        // Offline / Local List Creation
+        if (!accessToken) {
+            const newLocList = {
+                _id: 'loclist-' + Date.now(),
+                title: title.trim(),
+                type: 'local',
+                is_visible: true,
+            };
+            const updated = [...localLists, newLocList];
+            setLocalLists(updated);
+            localStorage.setItem('local_lists', JSON.stringify(updated));
+            setNewListTitle('');
+            return;
+        }
         let currentToken = accessToken || (await loginNative());
         if (!currentToken) return;
 
@@ -351,6 +398,13 @@ export function usePomodoro() {
 
     const handleCompleteTask = async (task: any, e?: React.MouseEvent) => {
         if (e) e.stopPropagation();
+        // Local Task Completion
+        if (!task.gtask_id) {
+            const updated = localTasks.filter((t) => t._id !== task._id);
+            setLocalTasks(updated);
+            localStorage.setItem('local_tasks', JSON.stringify(updated));
+            return;
+        }
         if (task.gtask_id) {
             // Optimistic update
             setGoogleTasks((prev) => prev.filter((t) => t._id !== task._id));
@@ -363,6 +417,36 @@ export function usePomodoro() {
             } catch (error) {
                 console.error("Failed to complete task in Google:", error);
                 setGoogleTasks((prev) => [...prev, task]);
+            }
+        }
+    };
+
+    const handleEditTask = async (taskId: string, newTitle: string) => {
+        if (!newTitle.trim()) return;
+        const trimmed = newTitle.trim();
+
+        // Check if Local Task
+        const isLocal = localTasks.some((t) => t._id === taskId);
+        if (isLocal) {
+            const updated = localTasks.map((t) => (t._id === taskId ? { ...t, title: trimmed } : t));
+            setLocalTasks(updated);
+            localStorage.setItem('local_tasks', JSON.stringify(updated));
+            return;
+        }
+
+        setGoogleTasks((prev) =>
+            prev.map((t) => (t._id === taskId || t.gtask_id === taskId ? { ...t, title: trimmed } : t))
+        );
+
+        const targetTask = googleTasks.find((t) => t._id === taskId || t.gtask_id === taskId);
+        if (targetTask?.gtask_id) {
+            let currentToken = accessToken || (await loginNative());
+            if (!currentToken) return;
+            try {
+                const listId = targetTask.list_id || activeList?.gtask_list_id || activeList?._id;
+                await updateDirectGoogleTask(currentToken, listId, targetTask.gtask_id, trimmed);
+            } catch (error) {
+                console.error("Failed to update task title in Google:", error);
             }
         }
     };
@@ -443,12 +527,10 @@ export function usePomodoro() {
         const pipApi = (window as any).documentPictureInPicture;
         if (pipApi.window) {
             pipApi.window.close();
-            setPipWindowRef(null);
             return;
         }
 
         const pipWin = await pipApi.requestWindow({ width: 280, height: 200 });
-        setPipWindowRef(pipWin);
 
         const taskTitle = selectedTaskId 
             ? tasks?.find((t: any) => t._id === selectedTaskId)?.title || 'Active Session'
@@ -477,8 +559,7 @@ export function usePomodoro() {
         `;
 
         pipWin.document.getElementById('pip-play-pause')!.onclick = () => setIsRunning((prev) => !prev);
-        pipWin.document.getElementById('pip-reset')!.onclick = () => { setIsRunning(false); setSeconds(workDurationMinutes * 60); };
-        pipWin.addEventListener('pagehide', () => setPipWindowRef(null));
+        pipWin.document.getElementById('pip-reset')!.onclick = () => { setIsRunning(false); setSeconds(workDurationMinutes * 60); }; 
     };
 
     const toggleFullscreen = () => {
@@ -571,7 +652,9 @@ export function usePomodoro() {
         lists, tasks, todaySessions, sessions,
         handleSelectTask, handleStart, handlePause, handleLogSession, handleDeleteSession,
         handleSyncGoogleTasks, handlePullToRefresh, handleAddTaskToList, handleCompleteTask, handleCreateGoogleList,
-        updateEstimatedPomos,
+        handleEditTask, updateEstimatedPomos,
+        currentTheme: THEMES[currentThemeId] || THEMES[DEFAULT_THEME_ID],
+        currentThemeId, setTheme,
         toggleFullscreen, toggleFloatingWidget, formatTime,
         handleLogout, loginNative, 
         workDurationMinutes, setWorkDurationMinutes,

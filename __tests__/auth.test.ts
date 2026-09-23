@@ -68,7 +68,14 @@ describe('Automated Auth Suite: Login & Logout Flows', () => {
   it('automatically filters out Google tasks and lists when logged out', async () => {
     const { result } = renderHook(() => usePomodoro());
 
-    expect(result.current.lists).toEqual([]);
+   expect(result.current.lists).toEqual([
+      {
+        _id: 'local-default',
+        title: 'My Tasks',
+        type: 'local',
+        is_visible: true,
+      },
+    ]);
     expect(result.current.tasks).toEqual([]);
   });
 });

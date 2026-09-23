@@ -96,6 +96,19 @@ export async function completeDirectGoogleTask(accessToken: string, listId: stri
     return await res.json();
 }
 
+export async function updateDirectGoogleTask(accessToken: string, listId: string, taskId: string, title: string) {
+    const res = await fetch(`${TASKS_BASE_URL}/lists/${listId}/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title }),
+    });
+    if (!res.ok) throw new Error('Failed to update Google Task');
+    return await res.json();
+}
+
 
 export async function createDirectGoogleList(accessToken: string, title: string) {
     const res = await fetch('https://tasks.googleapis.com/tasks/v1/users/@me/lists', {
