@@ -214,6 +214,19 @@ export function usePomodoro() {
         }
     };
 
+    const toggleListVisibility = ({ id, is_visible }: { id: string; is_visible: boolean }) => {
+        setLocalLists((prev) => {
+            const updated = prev.map((l) => (l._id === id ? { ...l, is_visible } : l));
+            localStorage.setItem('local_lists', JSON.stringify(updated));
+            return updated;
+        });
+        setGoogleLists((prev) => {
+            const updated = prev.map((l) => (l._id === id ? { ...l, is_visible } : l));
+            localStorage.setItem('cached_google_lists', JSON.stringify(updated));
+            return updated;
+        });
+    };
+
     const handleAddTaskToList = async (list: any, overrideTitle?: string) => {
         const title = overrideTitle ?? listTaskInputs[list._id];
         if (!title?.trim()) return;
@@ -652,7 +665,7 @@ export function usePomodoro() {
         lists, tasks, todaySessions, sessions,
         handleSelectTask, handleStart, handlePause, handleLogSession, handleDeleteSession,
         handleSyncGoogleTasks, handlePullToRefresh, handleAddTaskToList, handleCompleteTask, handleCreateGoogleList,
-        handleEditTask, updateEstimatedPomos,
+        handleEditTask, updateEstimatedPomos, toggleListVisibility,
         currentTheme: THEMES[currentThemeId] || THEMES[DEFAULT_THEME_ID],
         currentThemeId, setTheme,
         toggleFullscreen, toggleFloatingWidget, formatTime,
