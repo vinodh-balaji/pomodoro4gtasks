@@ -1,7 +1,20 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
+import { 
+  playPop, 
+  getTickEnabled, 
+  setTickEnabled,
+  getSoundMuted,
+  setSoundMuted,
+  startAmbientSound,
+  stopAmbientSound,
+  getCurrentAmbientType,
+  getAmbientVolume,
+  updateAmbientVolume
+} from '../../lib/audio';
 import AnalyticsView from '../AnalyticsView';
+import SettingsView from '../modules/views/SettingsView';
 import { THEMES, ThemeConfig } from '../../lib/themes';
 
 export default function MobileView(props: any) {
@@ -41,8 +54,8 @@ export default function MobileView(props: any) {
 
     const theme: ThemeConfig = currentTheme || THEMES.sakura;
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [showSplash, setShowSplash] = useState(true);
+    const [ambientType, setAmbientType] = useState<'rain' | 'waves' | 'deep' | 'none'>(getCurrentAmbientType());
     React.useEffect(() => {
         const timer = setTimeout(() => setShowSplash(false), 1800);
         return () => clearTimeout(timer);
@@ -65,10 +78,11 @@ export default function MobileView(props: any) {
     const activeTask = tasks?.find((t: any) => t._id === selectedTaskId);
 
     // 1. Build continuous slide track array
-    const slides: Array<{ type: 'list' | 'dashboard' | 'analytics'; id: string; list?: any }> = [
+    const slides: Array<{ type: 'list' | 'dashboard' | 'analytics' | 'settings'; id: string; list?: any }> = [
         ...visibleLists.map((l: any) => ({ type: 'list' as const, id: l._id, list: l })),
         { type: 'dashboard' as const, id: 'dashboard' },
-        { type: 'analytics' as const, id: 'analytics' }
+        { type: 'analytics' as const, id: 'analytics' },
+        { type: 'settings' as const, id: 'settings' }
     ];
 
     // 2. Derive active slide index
@@ -77,6 +91,8 @@ export default function MobileView(props: any) {
         currentSlideIndex = visibleLists.length;
     } else if (activeTab === 'analytics') {
         currentSlideIndex = visibleLists.length + 1;
+        } else if (activeTab === 'settings') {
+       currentSlideIndex = visibleLists.length + 2;
     } else {
         const listIdx = visibleLists.findIndex((l: any) => String(l._id) === String(activeList?._id));
         currentSlideIndex = listIdx >= 0 ? listIdx : 0;
@@ -94,6 +110,8 @@ export default function MobileView(props: any) {
             setActiveTab('dashboard');
         } else if (index === visibleLists.length + 1) {
             setActiveTab('analytics');
+        } else if (index === visibleLists.length + 2) {
+            setActiveTab('settings');
         }
     };
 
@@ -360,6 +378,7 @@ export default function MobileView(props: any) {
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => {
+                                            playPop();
                                             updateEstimatedPomos({ taskId: expandedTask._id, estimatedPomos: Math.max(1, (expandedTask.estimated_pomos ?? 1) - 1) });
                                         }}
                                         className="w-9 h-9 rounded-xl bg-white/90 border border-slate-200 active:bg-slate-100 text-slate-700 font-bold text-lg shadow-xs active:scale-90 transition-transform flex items-center justify-center"
@@ -369,6 +388,7 @@ export default function MobileView(props: any) {
                                     <span className={`text-base font-bold font-mono px-2 ${theme.textPrimary}`}>{expandedTask.estimated_pomos || 1}</span>
                                     <button
                                         onClick={() => {
+                                            playPop();
                                             updateEstimatedPomos({ taskId: expandedTask._id, estimatedPomos: (expandedTask.estimated_pomos ?? 1) + 1 });
                                         }}
                                         className="w-9 h-9 rounded-xl bg-white/90 border border-slate-200 active:bg-slate-100 text-slate-700 font-bold text-lg shadow-xs active:scale-90 transition-transform flex items-center justify-center"
@@ -404,136 +424,7 @@ export default function MobileView(props: any) {
             )}
 
             {/* ================= SETTINGS & THEME GALLERY MODAL ================= */}
-            {isSettingsOpen && (
-                <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex flex-col justify-end animate-fadeIn">
-                    <div className="bg-white rounded-t-3xl p-6 shadow-2xl space-y-6 border-t border-slate-200 max-h-[85%] overflow-y-auto">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                            <div className="flex items-center gap-2">
-                                <span className="text-xl">⚙️</span>
-                                <h2 className="text-lg font-bold text-slate-900">App Settings</h2>
-                            </div>
-                            <button
-                                onClick={() => setIsSettingsOpen(false)}
-                                className="w-8 h-8 rounded-full bg-slate-100 active:bg-slate-200 text-slate-500 font-bold flex items-center justify-center text-xs active:scale-90 transition-transform"
-                            >
-                                ✕
-                            </button>
-                        </div>
-
-                        {/* Section 1: Themes & Aesthetics */}
-                        <div className="space-y-3">
-                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Appearance & Themes</span>
-                            <div className="grid grid-cols-2 gap-2.5">
-                                {Object.values(THEMES).map((th) => {
-                                    const isCurrent = th.id === currentThemeId;
-                                    return (
-                                        <button
-                                            key={th.id}
-                                            onClick={() => setTheme(th.id)}
-                                            className={`relative h-20 rounded-2xl overflow-hidden border-2 text-left p-2.5 flex flex-col justify-end active:scale-95 transition-all bg-cover bg-center ${
-                                                isCurrent ? 'border-indigo-600 ring-2 ring-indigo-500/30 shadow-md' : 'border-slate-200 opacity-85 hover:opacity-100'
-                                            } ${!th.bgUrl ? (th.isDark ? 'bg-slate-950' : 'bg-slate-100') : ''}`}
-                                            style={th.bgUrl ? { backgroundImage: `url(${th.bgUrl})` } : {}}
-                                        >
-                                            {th.bgUrl && <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent" />}
-                                            <div className="relative z-10 flex items-center gap-1.5 text-white">
-                                                <span className="text-sm">{th.emoji}</span>
-                                                <span className={`text-xs font-bold truncate ${!th.bgUrl && !th.isDark ? 'text-slate-900' : 'text-white'}`}>
-                                                    {th.name}
-                                                </span>
-                                            </div>
-                                            {isCurrent && (
-                                                <span className="absolute top-2 right-2 w-4 h-4 rounded-full bg-indigo-600 text-white text-[9px] font-black flex items-center justify-center shadow-xs">
-                                                    ✓
-                                                </span>
-                                            )}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Guides & Quick Start */}
-                        <div className="space-y-3 pt-2 border-t border-slate-100">
-                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Guides & Quick Start</span>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => {
-                                        setIsSettingsOpen(false);
-                                        handleReplayOnboarding?.();
-                                    }}
-                                    className="flex-1 py-2 px-2.5 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 font-bold text-xs transition flex items-center justify-center gap-1"
-                                >
-                                    <span>🚀</span> Replay Tour
-                                </button>
-                                <button
-                                    onClick={() => handleResetStarterTasks?.()}
-                                    className="flex-1 py-2 px-2.5 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 font-bold text-xs transition flex items-center justify-center gap-1"
-                                >
-                                    <span>📋</span> Reset Tasks
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Section 2: Timer Configuration (Future Scaffolding) */}
-                        <div className="space-y-3 pt-2 border-t border-slate-100">
-                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Timer Preferences</span>
-                            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-3">
-                                <div className="flex justify-between items-center text-xs">
-                                    <span className="font-semibold text-slate-700">Focus Duration</span>
-                                    <span className="font-bold text-indigo-600 font-mono">25 Minutes</span>
-                                </div>
-                                <div className="flex justify-between items-center text-xs">
-                                    <span className="font-semibold text-slate-700">Short Break Duration</span>
-                                    <span className="font-bold text-indigo-600 font-mono">5 Minutes</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Section 3: App Integrations */}
-                        <div className="space-y-3 pt-2 border-t border-slate-100">
-                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Integrations & Accounts</span>
-                            <div className="space-y-2">
-                                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2.5">
-                                    <div className="flex justify-between items-center text-xs">
-                                        <span className="font-bold text-slate-800 flex items-center gap-1.5">
-                                            <span>🔵</span> Google Tasks & Drive
-                                        </span>
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${accessToken ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                            {accessToken ? 'Connected' : 'Disconnected'}
-                                        </span>
-                                    </div>
-                                    {accessToken ? (
-                                        <button
-                                            onClick={handleLogout}
-                                            className="w-full py-2 px-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-bold text-xs active:scale-95 transition-transform flex items-center justify-center gap-1.5"
-                                        >
-                                            <span>🚪</span> Logout & Disconnect
-                                        </button>
-                                    ) : (
-                                        <button
-                                            onClick={loginNative}
-                                            className="w-full py-2 px-3 rounded-xl bg-indigo-600 text-white font-bold text-xs active:scale-95 transition-transform shadow-xs flex items-center justify-center gap-1.5"
-                                        >
-                                            <span>🔑</span> Connect Google Account
-                                        </button>
-                                    )}
-
-
-                                </div>
-                                <div className="p-3 rounded-2xl bg-slate-50/50 border border-slate-200/60 flex justify-between items-center text-xs opacity-60">
-                                    <span className="font-bold text-slate-700">🎯 ClickUp</span>
-                                    <span className="text-[10px] font-bold text-slate-400">Coming Soon</span>
-                                </div>
-                                <div className="p-3 rounded-2xl bg-slate-50/50 border border-slate-200/60 flex justify-between items-center text-xs opacity-60">
-                                    <span className="font-bold text-slate-700">🔴 Todoist</span>
-                                    <span className="text-[10px] font-bold text-slate-400">Coming Soon</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            
             
             {/* ================= 3. TOP NAVIGATION HEADER ================= */}
             <header className={`px-4 py-3 ${theme.headerBg} border-b flex items-center justify-between shrink-0 z-40 relative`}>
@@ -589,12 +480,6 @@ export default function MobileView(props: any) {
                             <span>Sync</span>
                         )}
                     </button>
-                    <button
-                        onClick={() => setIsSettingsOpen(true)}
-                        className={`w-8 h-8 rounded-xl bg-white/50 active:bg-white/80 border ${theme.cardBorder} flex items-center justify-center text-sm active:scale-90 transition-transform`}
-                    >
-                        ⚙️
-                    </button>
                 </div>
             </header>
 
@@ -633,6 +518,13 @@ export default function MobileView(props: any) {
                             );
                         }
 
+                        if (slide.type === 'settings') {
+                            return (
+                               <div key="settings" className="w-full min-w-full flex-shrink-0 h-full overflow-y-auto px-4 py-4 space-y-4 pb-24">
+                                    <SettingsView {...props} theme={theme} />
+                                </div>
+                            );
+                        }
                         if (slide.type === 'dashboard') {
                             return (
                                 <div key="dashboard" className="w-full min-w-full flex-shrink-0 h-full overflow-y-auto px-4 py-4 space-y-6 pb-24 pt-4 flex flex-col items-center">
@@ -870,6 +762,7 @@ export default function MobileView(props: any) {
             <nav className={`fixed bottom-0 inset-x-0 h-20 ${theme.navBg} border-t px-6 flex items-center justify-around z-40 relative`}>
                 <button
                     onClick={() => {
+                        playPop();
                         setActiveTab('board');
                         if (visibleLists.length > 0) setSelectedListId(visibleLists[0]._id);
                     }}
@@ -879,18 +772,25 @@ export default function MobileView(props: any) {
                     Tasks
                 </button>
                 <button
-                    onClick={() => setActiveTab('dashboard')}
+                    onClick={() => { playPop(); setActiveTab('dashboard'); }}
                     className={`flex flex-col items-center gap-0.5 text-[10px] font-bold active:scale-95 transition-transform ${activeTab === 'dashboard' ? theme.accentText : 'text-slate-400'}`}
                 >
                     <span className="text-lg">⏱️</span>
                     Timer
                 </button>
                 <button
-                    onClick={() => setActiveTab('analytics')}
+                    onClick={() => { playPop(); setActiveTab('analytics'); }}
                     className={`flex flex-col items-center gap-0.5 text-[10px] font-bold active:scale-95 transition-transform ${activeTab === 'analytics' ? theme.accentText : 'text-slate-400'}`}
                 >
                     <span className="text-lg">📊</span>
                     Stats
+                </button>
+                <button
+                    onClick={() => { playPop(); setActiveTab('settings'); }}
+                    className={`flex flex-col items-center gap-0.5 text-[10px] font-bold active:scale-95 transition-transform ${activeTab === 'settings' ? theme.accentText : 'text-slate-400'}`}
+                >
+                    <span className="text-lg">⚙️</span>
+                    Settings
                 </button>
             </nav>
         </div>

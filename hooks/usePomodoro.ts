@@ -4,7 +4,16 @@ import { useState, useEffect } from 'react';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { App } from '@capacitor/app';
 import { SocialLogin } from '@capgo/capacitor-social-login';
-import { playCompletionChime, requestNotificationPermission, sendCompletionNotification } from '../lib/audio';
+import { 
+    playCompletionChime, 
+    playPop, 
+    playTick, 
+    requestNotificationPermission, 
+    sendCompletionNotification,
+    setSoundMuted,
+    getSoundMuted,
+} from '../lib/audio';
+
 import { THEMES, DEFAULT_THEME_ID, ThemeConfig } from '../lib/themes';
 import {
     fetchAllGoogleDataDirectly,
@@ -34,7 +43,7 @@ export function usePomodoro() {
     const [isRunning, setIsRunning] = useState(false);
     const [newListTitle, setNewListTitle] = useState('');
     const [listTaskInputs, setListTaskInputs] = useState<Record<string, string>>({});
-    const [activeTab, setActiveTab] = useState<'board' | 'dashboard' | 'analytics' | 'menu'>('board');
+    const [activeTab, setActiveTab] = useState<'board' | 'dashboard' | 'analytics' | 'settings' | 'menu'>('board');
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [accessToken, setAccessToken] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
@@ -204,6 +213,7 @@ export function usePomodoro() {
     });
 
     const handleDeleteSession = (sessionId: string) => {
+        playPop();
         const updated = sessions.filter((s: any) => (s._id || s.id) !== sessionId);
         saveSessions(updated);
     };
@@ -250,6 +260,7 @@ export function usePomodoro() {
     };
 
     const handleAddTaskToList = async (list: any, overrideTitle?: string) => {
+        playPop();
         const title = overrideTitle ?? listTaskInputs[list._id];
         if (!title?.trim()) return;
 
@@ -299,6 +310,7 @@ export function usePomodoro() {
         setListTaskInputs((prev) => ({ ...prev, [list._id]: '' }));
     };
     const handleCreateGoogleList = async (titleOverride?: string) => {
+        playPop();
         const title = titleOverride || newListTitle;
         if (!title.trim()) return;
         // Offline / Local List Creation
@@ -432,6 +444,7 @@ export function usePomodoro() {
      }, [accessToken, isRunning, activeTab]);
 
     const handleCompleteTask = async (task: any, e?: React.MouseEvent) => {
+        playPop();
         if (e) e.stopPropagation();
         // Local Task Completion
         if (!task.gtask_id) {
@@ -489,6 +502,7 @@ export function usePomodoro() {
     const handleSelectTask = (taskId: string) => setSelectedTaskId(taskId);
     
     const handleStart = async () => {
+        playPop();
         const hasPrompted = localStorage.getItem('has_prompted_notifications');
         if (!hasPrompted) {
             setShowNotificationPrompt(true);
@@ -525,12 +539,14 @@ export function usePomodoro() {
     };
 
     const handlePause = async () => {
+        playPop();
         localStorage.removeItem('pomo_target_end_time');
         await LocalNotifications.cancel({ notifications: [{ id: 101 }] }).catch(() => {});
         setIsRunning(false);
     };
 
     const handleLogSession = async () => {
+        playPop();
         localStorage.removeItem('pomo_target_end_time');
         await LocalNotifications.cancel({ notifications: [{ id: 101 }] }).catch(() => {});
 
@@ -549,7 +565,11 @@ export function usePomodoro() {
     useEffect(() => {
         let interval: NodeJS.Timeout | null = null;
         if (isRunning && seconds > 0) {
-            interval = setInterval(() => setSeconds((prev) => prev - 1), 1000);
+            interval = setInterval(() => {
+                setSeconds((prev) => prev - 1);
+                playTick();
+            }, 1000);
+            
         } else if (seconds === 0 && isRunning) {
             setIsRunning(false);
             playCompletionChime();

@@ -1,7 +1,20 @@
 "use client";
 
 import React, { useState } from 'react';
+import { 
+  playPop, 
+  getTickEnabled, 
+  setTickEnabled,
+  getSoundMuted,
+  setSoundMuted,
+  startAmbientSound,
+  stopAmbientSound,
+  getCurrentAmbientType,
+  getAmbientVolume,
+  updateAmbientVolume
+} from '../../lib/audio';
 import AnalyticsView from '../AnalyticsView';
+import SettingsView from '../modules/views/SettingsView';
 import { THEMES, ThemeConfig } from '../../lib/themes';
 
 export default function DesktopView(props: any) {
@@ -49,14 +62,13 @@ export default function DesktopView(props: any) {
     } = props;
 
     const theme: ThemeConfig = currentTheme || THEMES.light;
-
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
     const localLists = lists.filter((l: any) => l.type === 'local');
     const googleLists = lists.filter((l: any) => l.type === 'google');
     const visibleLists = lists.filter((l: any) => l.is_visible);
     const expandedTask = tasks?.find((t: any) => t._id === expandedTaskId);
+    const [ambientType, setAmbientType] = useState<'rain' | 'waves' | 'deep' | 'none'>(getCurrentAmbientType());
     const activeTask = tasks?.find((t: any) => t._id === selectedTaskId);
 
     const totalDurationSeconds = workDurationMinutes * 60;
@@ -98,35 +110,34 @@ export default function DesktopView(props: any) {
                             >
                                 {isSyncing ? 'Syncing...' : 'Sync'}
                             </button>
-                            <button
-                                onClick={() => setIsSettingsOpen(true)}
-                                className={`w-8 h-8 rounded-lg bg-white/50 hover:bg-white/80 border ${theme.cardBorder} flex items-center justify-center text-sm transition active:scale-90`}
-                                title="App Settings & Themes"
-                            >
-                                ⚙️
-                            </button>
                         </div>
                     </div>
 
                     {/* Navigation View Switcher */}
                     <div className="flex bg-slate-200/50 dark:bg-slate-800/50 p-1 rounded-xl border border-slate-300/40 dark:border-slate-700/40">
                         <button
-                            onClick={() => setActiveTab('board')}
+                            onClick={() => { playPop(); setActiveTab('board'); }}
                             className={`flex-1 text-xs py-2 rounded-lg font-bold transition-all ${activeTab === 'board' ? `${theme.accentBg} text-white shadow-xs` : `${theme.textSecondary} hover:${theme.textPrimary}`}`}
                         >
                             📋 Board
                         </button>
                         <button
-                            onClick={() => setActiveTab('dashboard')}
+                            onClick={() => { playPop(); setActiveTab('dashboard'); }}
                             className={`flex-1 text-xs py-2 rounded-lg font-bold transition-all ${activeTab === 'dashboard' ? `${theme.accentBg} text-white shadow-xs` : `${theme.textSecondary} hover:${theme.textPrimary}`}`}
                         >
                             ⏱️ Timer
                         </button>
                         <button
-                            onClick={() => setActiveTab('analytics')}
+                            onClick={() => { playPop(); setActiveTab('analytics'); }}
                             className={`flex-1 text-xs py-2 rounded-lg font-bold transition-all ${activeTab === 'analytics' ? `${theme.accentBg} text-white shadow-xs` : `${theme.textSecondary} hover:${theme.textPrimary}`}`}
                         >
                             📊 Stats
+                        </button>
+                        <button
+                            onClick={() => { playPop(); setActiveTab('settings'); }}
+                            className={`flex-1 text-xs py-2 rounded-lg font-bold transition-all ${activeTab === 'settings' ? `${theme.accentBg} text-white shadow-xs` : `${theme.textSecondary} hover:${theme.textPrimary}`}`}
+                        >
+                            ⚙️ Settings
                         </button>
                     </div>
 
@@ -203,109 +214,6 @@ export default function DesktopView(props: any) {
                 </div>
             </aside>
 
-            {/* ================= 2. SETTINGS & THEME GALLERY MODAL ================= */}
-            {isSettingsOpen && (
-                <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fadeIn">
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl space-y-6 border border-slate-200 dark:border-slate-800 max-w-xl w-full max-h-[90vh] overflow-y-auto">
-                        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-                            <div className="flex items-center gap-2">
-                                <span className="text-xl">⚙️</span>
-                                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">App Settings</h2>
-                            </div>
-                            <button
-                                onClick={() => setIsSettingsOpen(false)}
-                                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 active:bg-slate-200 text-slate-500 font-bold flex items-center justify-center text-xs active:scale-90 transition"
-                            >
-                                ✕
-                            </button>
-                        </div>
-
-                        {/* Section 1: Themes & Visual Gallery */}
-                        <div className="space-y-3">
-                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Appearance & Themes</span>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                                {Object.values(THEMES).map((th) => {
-                                    const isCurrent = th.id === currentThemeId;
-                                    return (
-                                        <button
-                                            key={th.id}
-                                            onClick={() => setTheme(th.id)}
-                                            className={`relative h-20 rounded-2xl overflow-hidden border-2 text-left p-2.5 flex flex-col justify-end active:scale-95 transition-all bg-cover bg-center ${
-                                                isCurrent ? 'border-rose-500 ring-2 ring-rose-500/30 shadow-md' : 'border-slate-200 dark:border-slate-800 opacity-85 hover:opacity-100'
-                                            } ${!th.bgUrl ? (th.isDark ? 'bg-slate-950' : 'bg-slate-100') : ''}`}
-                                            style={th.bgUrl ? { backgroundImage: `url(${th.bgUrl})` } : {}}
-                                        >
-                                            {th.bgUrl && <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent" />}
-                                            <div className="relative z-10 flex items-center gap-1.5 text-white">
-                                                <span className="text-sm">{th.emoji}</span>
-                                                <span className={`text-xs font-bold truncate ${!th.bgUrl && !th.isDark ? 'text-slate-900' : 'text-white'}`}>
-                                                    {th.name}
-                                                </span>
-                                            </div>
-                                            {isCurrent && (
-                                                <span className="absolute top-2 right-2 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center shadow-xs">
-                                                    ✓
-                                                </span>
-                                            )}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Section 2: Guides & Quick Start */}
-                        <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
-                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Guides & Quick Start</span>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => {
-                                        setIsSettingsOpen(false);
-                                        handleReplayOnboarding?.();
-                                    }}
-                                    className="flex-1 py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-xs active:scale-95 transition flex items-center justify-center gap-1.5"
-                                >
-                                    <span>🚀</span> Replay Welcome Tour
-                                </button>
-                                <button
-                                    onClick={() => handleResetStarterTasks?.()}
-                                    className="flex-1 py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-xs active:scale-95 transition flex items-center justify-center gap-1.5"
-                                >
-                                    <span>📋</span> Restore Starter Tasks
-                                </button>
-                            </div>
-                        </div>
-                        {/* Section 3: Integrations & Account Management */}
-                        <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
-                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Integrations & Accounts</span>
-                            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-2.5">
-                                <div className="flex justify-between items-center text-xs">
-                                    <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                                        <span>🔵</span> Google Tasks & Drive
-                                    </span>
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${accessToken ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                        {accessToken ? 'Connected' : 'Disconnected'}
-                                    </span>
-                                </div>
-                                {accessToken ? (
-                                    <button
-                                        onClick={handleLogout}
-                                        className="w-full py-2 px-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-bold text-xs active:scale-95 transition flex items-center justify-center gap-1.5"
-                                    >
-                                        <span>🚪</span> Logout & Disconnect
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={loginNative}
-                                        className="w-full py-2 px-3 rounded-xl bg-indigo-600 text-white font-bold text-xs active:scale-95 transition shadow-xs flex items-center justify-center gap-1.5"
-                                    >
-                                        <span>🔑</span> Connect Google Account
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* ================= 3. EXPANDED INTERACTIVE TASK CARD MODAL ================= */}
             {expandedTask && (
@@ -370,14 +278,14 @@ export default function DesktopView(props: any) {
                                 <span className={`text-xs font-semibold ${theme.textPrimary}`}>Adjust Target Pomodoros:</span>
                                 <div className="flex items-center gap-2">
                                     <button
-                                        onClick={() => updateEstimatedPomos({ taskId: expandedTask._id, estimatedPomos: Math.max(1, (expandedTask.estimated_pomos ?? 1) - 1) })}
+                                        onClick={() => { playPop(); updateEstimatedPomos({ taskId: expandedTask._id, estimatedPomos: Math.max(1, (expandedTask.estimated_pomos ?? 1) - 1) }); }}
                                         className="w-9 h-9 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 active:bg-slate-100 text-slate-700 dark:text-slate-200 font-bold text-lg shadow-xs transition flex items-center justify-center"
                                     >
                                         -
                                     </button>
                                     <span className={`text-base font-bold font-mono px-2 ${theme.textPrimary}`}>{expandedTask.estimated_pomos || 1}</span>
                                     <button
-                                        onClick={() => updateEstimatedPomos({ taskId: expandedTask._id, estimatedPomos: (expandedTask.estimated_pomos ?? 1) + 1 })}
+                                        onClick={() => { playPop(); updateEstimatedPomos({ taskId: expandedTask._id, estimatedPomos: (expandedTask.estimated_pomos ?? 1) + 1 }); }}
                                         className="w-9 h-9 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 active:bg-slate-100 text-slate-700 dark:text-slate-200 font-bold text-lg shadow-xs transition flex items-center justify-center"
                                     >
                                         +
@@ -476,6 +384,8 @@ export default function DesktopView(props: any) {
                     <div className={`${theme.cardBg} p-6 rounded-3xl border ${theme.cardBorder} shadow-lg backdrop-blur-md`}>
                         <AnalyticsView sessions={sessions} tasks={tasks} DAILY_GOAL={DAILY_GOAL} />
                     </div>
+                    ) : activeTab === 'settings' ? (
+                    <SettingsView {...props} theme={theme} />
                 ) : ( 
                     /* KANBAN BOARD VIEW */
                     <>

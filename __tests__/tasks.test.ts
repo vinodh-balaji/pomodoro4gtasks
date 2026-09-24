@@ -24,10 +24,16 @@ vi.mock('../lib/googleStorage', () => ({
 
 vi.mock('../lib/audio', () => ({
   playCompletionChime: vi.fn(),
+  playPop: vi.fn(),
+  playTick: vi.fn(),
+  startAmbientSound: vi.fn(),
+  stopAmbientSound: vi.fn(),
+  setSoundMuted: vi.fn(),
+  getSoundMuted: vi.fn(),
+  toggleMute: vi.fn(),
   requestNotificationPermission: vi.fn(),
   sendCompletionNotification: vi.fn(),
 }));
-
 describe('Automated Task Creation Suite', () => {
   beforeEach(() => {
     localStorage.clear();
