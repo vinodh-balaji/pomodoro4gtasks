@@ -7,6 +7,8 @@ import { Capacitor } from '@capacitor/core';
 import { usePomodoro } from '../hooks/usePomodoro';
 import MobileView from '../components/mobile/MobileView';
 import DesktopView from '../components/desktop/DesktopView';
+import OnboardingModal from '../components/modals/OnboardingModal';
+import NotificationPromptModal from '../components/modals/NotificationPromptModal';
 
 const HomePage: NextPage = () => {
     const pomodoroState = usePomodoro();
@@ -24,6 +26,20 @@ const HomePage: NextPage = () => {
     if (showApp || isNativeMobile) {
         return (
             <div className="relative">
+                {/* First-Launch Interactive Onboarding Tour */}
+                <OnboardingModal
+                    isOpen={pomodoroState.showOnboarding}
+                    onClose={pomodoroState.handleCompleteOnboarding}
+                    currentThemeId={pomodoroState.currentThemeId}
+                    setTheme={pomodoroState.setTheme}
+                    loginNative={pomodoroState.loginNative}
+                />
+                {/* Contextual Notification Permission Modal */}
+                <NotificationPromptModal
+                    isOpen={pomodoroState.showNotificationPrompt}
+                    onAllow={() => pomodoroState.handleConfirmNotificationPermission(true)}
+                    onSkip={() => pomodoroState.handleConfirmNotificationPermission(false)}
+                />
                 {!isNativeMobile && (
                     <div className="bg-slate-900 text-slate-400 text-xs px-4 py-1.5 flex justify-between items-center border-b border-slate-800">
                         <span className="flex items-center gap-1.5 font-medium">

@@ -76,6 +76,7 @@ describe('Automated Auth Suite: Login & Logout Flows', () => {
         is_visible: true,
       },
     ]);
-    expect(result.current.tasks).toEqual([]);
+    expect(result.current.tasks.filter((t: any) => t.gtask_id)).toEqual([]);
+    expect(result.current.tasks.length).toBe(4);
   });
 });

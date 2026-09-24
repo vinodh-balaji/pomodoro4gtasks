@@ -20,6 +20,12 @@ import {
 export function usePomodoro() {
     const DEFAULT_WORK_MINUTES = 25;
     const DEFAULT_LOCAL_LIST = { _id: 'local-default', title: 'My Tasks', type: 'local', is_visible: true };
+    const STARTER_TASKS = [
+        { _id: 'loc-start-1', list_id: 'local-default', title: 'Tap me to view task details & set target pomodoros 🍅', status: 'needsAction', estimated_pomos: 2, completed_pomos: 0 },
+        { _id: 'loc-start-2', list_id: 'local-default', title: 'Press ▶ to start a 25-minute focus sprint ⏱️', status: 'needsAction', estimated_pomos: 1, completed_pomos: 0 },
+        { _id: 'loc-start-3', list_id: 'local-default', title: 'Check off this task when completed! ✓', status: 'needsAction', estimated_pomos: 1, completed_pomos: 0 },
+        { _id: 'loc-start-4', list_id: 'local-default', title: 'Optional: Connect Google Tasks in Settings ⚙️', status: 'needsAction', estimated_pomos: 1, completed_pomos: 0 }
+    ];
     const [workDurationMinutes, setWorkDurationMinutes] = useState(DEFAULT_WORK_MINUTES);
     const [newTask, setNewTask] = useState('');
     const [estimatedPomos, setEstimatedPomos] = useState(1);
@@ -38,7 +44,9 @@ export function usePomodoro() {
     const [googleTasks, setGoogleTasks] = useState<any[]>([]);
     // Local / Guest Fallback State
     const [localLists, setLocalLists] = useState<any[]>([DEFAULT_LOCAL_LIST]);
-    const [localTasks, setLocalTasks] = useState<any[]>([]);
+    const [localTasks, setLocalTasks] = useState<any[]>(STARTER_TASKS);
+    const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
+    const [showNotificationPrompt, setShowNotificationPrompt] = useState<boolean>(false);
 
     const [sessions, setSessions] = useState<any[]>([]);
     // Local override store for estimated pomodoros (persists estimates for both local and Google tasks)
@@ -63,12 +71,7 @@ export function usePomodoro() {
 
 
 
-    // 1. Request Notification Permissions on Hook Initialization
-    useEffect(() => {
-        LocalNotifications.requestPermissions().catch((err) =>
-            console.error('Notification permission error:', err)
-        );
-    }, []);
+ 
 
     // 2. Recalculate remaining seconds when phone unlocks / app resumes
     useEffect(() => {
@@ -121,8 +124,12 @@ export function usePomodoro() {
         const cachedTasks = localStorage.getItem('cached_google_tasks');
         const savedLocalLists = localStorage.getItem('local_lists');
         const savedLocalTasks = localStorage.getItem('local_tasks');
+        const hasSeenTour = localStorage.getItem('has_seen_onboarding');
         const savedSessions = localStorage.getItem('local_sessions');
         const savedEstimates = localStorage.getItem('task_estimates');
+        if (!hasSeenTour) {
+            setShowOnboarding(true);
+        }
 
         if (savedLocalLists) setLocalLists(JSON.parse(savedLocalLists));
         if (savedLocalTasks) setLocalTasks(JSON.parse(savedLocalTasks));
@@ -131,7 +138,22 @@ export function usePomodoro() {
         if (savedSessions) setSessions(JSON.parse(savedSessions));
         if (savedEstimates) setTaskEstimates(JSON.parse(savedEstimates));
     }, []);
+    const handleCompleteOnboarding = () => {
+        localStorage.setItem('has_seen_onboarding', 'true');
+        setShowOnboarding(false);
+    };
 
+    const handleReplayOnboarding = () => {
+        setShowOnboarding(true);
+    };
+
+    const handleResetStarterTasks = () => {
+        setLocalTasks((prev) => {
+            const merged = [...STARTER_TASKS, ...prev.filter((t) => !t._id.startsWith('loc-start-'))];
+            localStorage.setItem('local_tasks', JSON.stringify(merged));
+            return merged;
+        });
+    };
     // 2. Storage & Drive Sync Helpers
     const triggerDriveSync = (token: string | null, sess: any[], ests?: Record<string, number>) => {
         if (!token) return;
@@ -467,6 +489,11 @@ export function usePomodoro() {
     const handleSelectTask = (taskId: string) => setSelectedTaskId(taskId);
     
     const handleStart = async () => {
+        const hasPrompted = localStorage.getItem('has_prompted_notifications');
+        if (!hasPrompted) {
+            setShowNotificationPrompt(true);
+            return;
+        }
         const targetEndTime = Date.now() + seconds * 1000;
         localStorage.setItem('pomo_target_end_time', targetEndTime.toString());
 
@@ -483,7 +510,18 @@ export function usePomodoro() {
         }).catch((err) => console.error('Failed to schedule notification:', err));
         setIsRunning(true);
         setActiveTab('dashboard');
-        requestNotificationPermission();
+        };
+
+    const handleConfirmNotificationPermission = async (allow: boolean) => {
+        localStorage.setItem('has_prompted_notifications', 'true');
+        setShowNotificationPrompt(false);
+        if (allow) {
+            await requestNotificationPermission();
+            await LocalNotifications.requestPermissions().catch((err) =>
+                console.error('Notification permission error:', err)
+            );
+        }
+        handleStart();requestNotificationPermission();
     };
 
     const handlePause = async () => {
@@ -671,7 +709,11 @@ export function usePomodoro() {
         toggleFullscreen, toggleFloatingWidget, formatTime,
         handleLogout, loginNative, 
         workDurationMinutes, setWorkDurationMinutes,
-        isSyncing
+        isSyncing,
+        showOnboarding,
+        setShowOnboarding, handleCompleteOnboarding,
+        showNotificationPrompt, handleConfirmNotificationPermission,
+        handleReplayOnboarding, handleResetStarterTasks
     };
 
     

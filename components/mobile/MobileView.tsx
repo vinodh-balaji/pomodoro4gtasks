@@ -35,6 +35,8 @@ export default function MobileView(props: any) {
         currentTheme,
         currentThemeId,
         setTheme,
+        handleReplayOnboarding,
+        handleResetStarterTasks,
     } = props;
 
     const theme: ThemeConfig = currentTheme || THEMES.sakura;
@@ -448,6 +450,28 @@ export default function MobileView(props: any) {
                                         </button>
                                     );
                                 })}
+                            </div>
+                        </div>
+
+                        {/* Guides & Quick Start */}
+                        <div className="space-y-3 pt-2 border-t border-slate-100">
+                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Guides & Quick Start</span>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => {
+                                        setIsSettingsOpen(false);
+                                        handleReplayOnboarding?.();
+                                    }}
+                                    className="flex-1 py-2 px-2.5 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 font-bold text-xs transition flex items-center justify-center gap-1"
+                                >
+                                    <span>🚀</span> Replay Tour
+                                </button>
+                                <button
+                                    onClick={() => handleResetStarterTasks?.()}
+                                    className="flex-1 py-2 px-2.5 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 font-bold text-xs transition flex items-center justify-center gap-1"
+                                >
+                                    <span>📋</span> Reset Tasks
+                                </button>
                             </div>
                         </div>
 

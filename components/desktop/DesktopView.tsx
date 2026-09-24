@@ -44,6 +44,8 @@ export default function DesktopView(props: any) {
         currentTheme,
         currentThemeId,
         setTheme,
+        handleReplayOnboarding,
+        handleResetStarterTasks,
     } = props;
 
     const theme: ThemeConfig = currentTheme || THEMES.light;
@@ -251,7 +253,28 @@ export default function DesktopView(props: any) {
                             </div>
                         </div>
 
-                        {/* Section 2: Integrations & Account Management */}
+                        {/* Section 2: Guides & Quick Start */}
+                        <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Guides & Quick Start</span>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => {
+                                        setIsSettingsOpen(false);
+                                        handleReplayOnboarding?.();
+                                    }}
+                                    className="flex-1 py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-xs active:scale-95 transition flex items-center justify-center gap-1.5"
+                                >
+                                    <span>🚀</span> Replay Welcome Tour
+                                </button>
+                                <button
+                                    onClick={() => handleResetStarterTasks?.()}
+                                    className="flex-1 py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-xs active:scale-95 transition flex items-center justify-center gap-1.5"
+                                >
+                                    <span>📋</span> Restore Starter Tasks
+                                </button>
+                            </div>
+                        </div>
+                        {/* Section 3: Integrations & Account Management */}
                         <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
                             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Integrations & Accounts</span>
                             <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-2.5">
