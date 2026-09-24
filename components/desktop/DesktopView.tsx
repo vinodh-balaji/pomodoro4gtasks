@@ -114,28 +114,28 @@ export default function DesktopView(props: any) {
                     </div>
 
                     {/* Navigation View Switcher */}
-                    <div className="flex bg-slate-200/50 dark:bg-slate-800/50 p-1 rounded-xl border border-slate-300/40 dark:border-slate-700/40">
+                    <div className="grid grid-cols-4 gap-0.5 bg-slate-200/50 dark:bg-slate-800/50 p-1 rounded-xl border border-slate-300/40 dark:border-slate-700/40">
                         <button
                             onClick={() => { playPop(); setActiveTab('board'); }}
-                            className={`flex-1 text-xs py-2 rounded-lg font-bold transition-all ${activeTab === 'board' ? `${theme.accentBg} text-white shadow-xs` : `${theme.textSecondary} hover:${theme.textPrimary}`}`}
+                            className={`text-[10px] py-1.5 px-0.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1 whitespace-nowrap ${activeTab === 'board' ? `${theme.accentBg} text-white shadow-xs` : `${theme.textSecondary} hover:${theme.textPrimary}`}`}
                         >
                             📋 Board
                         </button>
                         <button
                             onClick={() => { playPop(); setActiveTab('dashboard'); }}
-                            className={`flex-1 text-xs py-2 rounded-lg font-bold transition-all ${activeTab === 'dashboard' ? `${theme.accentBg} text-white shadow-xs` : `${theme.textSecondary} hover:${theme.textPrimary}`}`}
+                            className={`text-[10px] py-1.5 px-0.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1 whitespace-nowrap ${activeTab === 'dashboard' ? `${theme.accentBg} text-white shadow-xs` : `${theme.textSecondary} hover:${theme.textPrimary}`}`}
                         >
                             ⏱️ Timer
                         </button>
                         <button
                             onClick={() => { playPop(); setActiveTab('analytics'); }}
-                            className={`flex-1 text-xs py-2 rounded-lg font-bold transition-all ${activeTab === 'analytics' ? `${theme.accentBg} text-white shadow-xs` : `${theme.textSecondary} hover:${theme.textPrimary}`}`}
+                            className={`text-[10px] py-1.5 px-0.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1 whitespace-nowrap ${activeTab === 'analytics' ? `${theme.accentBg} text-white shadow-xs` : `${theme.textSecondary} hover:${theme.textPrimary}`}`}
                         >
                             📊 Stats
                         </button>
                         <button
                             onClick={() => { playPop(); setActiveTab('settings'); }}
-                            className={`flex-1 text-xs py-2 rounded-lg font-bold transition-all ${activeTab === 'settings' ? `${theme.accentBg} text-white shadow-xs` : `${theme.textSecondary} hover:${theme.textPrimary}`}`}
+                            className={`text-[10px] py-1.5 px-0.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1 whitespace-nowrap ${activeTab === 'settings' ? `${theme.accentBg} text-white shadow-xs` : `${theme.textSecondary} hover:${theme.textPrimary}`}`}
                         >
                             ⚙️ Settings
                         </button>
