@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useReducer } from 'react';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { App } from '@capacitor/app';
 import { SocialLogin } from '@capgo/capacitor-social-login';
@@ -25,9 +25,9 @@ import {
     saveAppDataToDrive,
     LocalAppData,
 } from '../lib/googleStorage';
-
+import { timerReducer, initialTimerState } from '../lib/timerReducer';
 export function usePomodoro() {
-    const DEFAULT_WORK_MINUTES = 25;
+    
     const DEFAULT_LOCAL_LIST = { _id: 'local-default', title: 'My Tasks', type: 'local', is_visible: true };
     const STARTER_TASKS = [
         { _id: 'loc-start-1', list_id: 'local-default', title: 'Tap me to view task details & set target pomodoros 🍅', status: 'needsAction', estimated_pomos: 2, completed_pomos: 0 },
@@ -35,12 +35,34 @@ export function usePomodoro() {
         { _id: 'loc-start-3', list_id: 'local-default', title: 'Check off this task when completed! ✓', status: 'needsAction', estimated_pomos: 1, completed_pomos: 0 },
         { _id: 'loc-start-4', list_id: 'local-default', title: 'Optional: Connect Google Tasks in Settings ⚙️', status: 'needsAction', estimated_pomos: 1, completed_pomos: 0 }
     ];
-    const [workDurationMinutes, setWorkDurationMinutes] = useState(DEFAULT_WORK_MINUTES);
+    // Centralized Atomic Timer Reducer
+    const [timerState, dispatch] = useReducer(timerReducer, initialTimerState);
+
+    // Derived timer values for backward compatibility with UI components
+    const seconds = timerState.seconds;
+    const isRunning = timerState.status === 'RUNNING';
+    const selectedTaskId = timerState.selectedTaskId;
+    const workDurationMinutes = timerState.workDurationMinutes;
+
+    const setWorkDurationMinutes = (minutes: number) => dispatch({ type: 'SET_DURATION', minutes });
+    const setSelectedTaskId = (taskId: string) => dispatch({ type: 'SELECT_TASK', taskId });
+    const setSeconds = (secs: number | ((prev: number) => number)) => {
+        if (typeof secs === 'function') {
+            dispatch({ type: 'TICK', remainingSeconds: secs(timerState.seconds) });
+        } else {
+            dispatch({ type: 'TICK', remainingSeconds: secs });
+        }
+    };
+    const setIsRunning = (running: boolean | ((prev: boolean) => boolean)) => {
+        const nextRunning = typeof running === 'function' ? running(isRunning) : running;
+        if (nextRunning) {
+            dispatch({ type: 'START_TIMER' });
+        } else {
+            dispatch({ type: 'PAUSE_TIMER' });
+        }
+    };
     const [newTask, setNewTask] = useState('');
     const [estimatedPomos, setEstimatedPomos] = useState(1);
-    const [selectedTaskId, setSelectedTaskId] = useState('');
-    const [seconds, setSeconds] = useState(workDurationMinutes * 60);
-    const [isRunning, setIsRunning] = useState(false);
     const [newListTitle, setNewListTitle] = useState('');
     const [listTaskInputs, setListTaskInputs] = useState<Record<string, string>>({});
     const [activeTab, setActiveTab] = useState<'board' | 'dashboard' | 'analytics' | 'settings' | 'menu'>('board');
@@ -78,18 +100,55 @@ export function usePomodoro() {
     };
     const DAILY_GOAL = 8;
 
+    // 1. Hydrate timer state from localStorage on initial mount
+    useEffect(() => {
+        const savedTimer = localStorage.getItem('pomo_timer_state');
+        if (!savedTimer) return;
 
+        try {
+            const parsed = JSON.parse(savedTimer);
+            if (parsed.status === 'RUNNING' && parsed.targetEndTime) {
+                const remaining = Math.max(0, Math.round((parsed.targetEndTime - Date.now()) / 1000));
+                if (remaining > 0) {
+                    dispatch({
+                        type: 'RESTORE_STATE',
+                        payload: { ...parsed, seconds: remaining, status: 'RUNNING' },
+                    });
+                    setActiveTab('dashboard'); // Switch to Timer tab on launch
+                } else {
+                    dispatch({
+                        type: 'RESTORE_STATE',
+                        payload: {
+                            ...parsed,
+                            seconds: (parsed.workDurationMinutes || 25) * 60,
+                            status: 'IDLE',
+                            targetEndTime: null,
+                        },
+                    });
+                }
+            } else if (parsed) {
+                dispatch({ type: 'RESTORE_STATE', payload: parsed });
+            }
+        } catch (err) {
+            console.error('Failed to restore saved timer state:', err);
+        }
+    }, []);
 
+    // 2. Automatically sync complete timer state to localStorage whenever it transitions
+    useEffect(() => {
+        localStorage.setItem('pomo_timer_state', JSON.stringify(timerState));
+    }, [timerState]);
  
 
     // 2. Recalculate remaining seconds when phone unlocks / app resumes
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible' && isRunning) {
+                setActiveTab('dashboard'); // Switch to Timer tab on resume
                 const savedEndTime = localStorage.getItem('pomo_target_end_time');
                 if (savedEndTime) {
                     const remaining = Math.max(0, Math.round((parseInt(savedEndTime, 10) - Date.now()) / 1000));
-                    setSeconds(remaining);
+                    dispatch({ type: 'TICK', remainingSeconds: remaining });
                     if (remaining === 0) {
                         handleLogSession();
                     }
@@ -499,7 +558,7 @@ export function usePomodoro() {
         }
     };
 
-    const handleSelectTask = (taskId: string) => setSelectedTaskId(taskId);
+    const handleSelectTask = (taskId: string) => dispatch({ type: 'SELECT_TASK', taskId });
     
     const handleStart = async () => {
         playPop();
@@ -508,6 +567,7 @@ export function usePomodoro() {
             setShowNotificationPrompt(true);
             return;
         }
+        dispatch({ type: 'START_TIMER' });
         const targetEndTime = Date.now() + seconds * 1000;
         localStorage.setItem('pomo_target_end_time', targetEndTime.toString());
 
@@ -522,7 +582,6 @@ export function usePomodoro() {
                 },
             ],
         }).catch((err) => console.error('Failed to schedule notification:', err));
-        setIsRunning(true);
         setActiveTab('dashboard');
         };
 
@@ -542,7 +601,7 @@ export function usePomodoro() {
         playPop();
         localStorage.removeItem('pomo_target_end_time');
         await LocalNotifications.cancel({ notifications: [{ id: 101 }] }).catch(() => {});
-        setIsRunning(false);
+        dispatch({ type: 'PAUSE_TIMER' });
     };
 
     const handleLogSession = async () => {
@@ -557,8 +616,7 @@ export function usePomodoro() {
             task_id: selectedTaskId || 'unassigned',
         };
         saveSessions([...sessions, newSession]);
-        setSeconds(workDurationMinutes * 60);
-        setIsRunning(false);
+        dispatch({ type: 'LOG_SESSION' });
     };
 
     // Countdown Timer Effect
@@ -566,12 +624,12 @@ export function usePomodoro() {
         let interval: NodeJS.Timeout | null = null;
         if (isRunning && seconds > 0) {
             interval = setInterval(() => {
-                setSeconds((prev) => prev - 1);
+                dispatch({ type: 'TICK' });
                 playTick();
             }, 1000);
             
         } else if (seconds === 0 && isRunning) {
-            setIsRunning(false);
+            dispatch({ type: 'PAUSE_TIMER' });
             playCompletionChime();
             const currentTask = tasks?.find((t: any) => t._id === selectedTaskId);
             sendCompletionNotification(currentTask?.title);
@@ -630,7 +688,7 @@ export function usePomodoro() {
         `;
 
         pipWin.document.getElementById('pip-play-pause')!.onclick = () => setIsRunning((prev) => !prev);
-        pipWin.document.getElementById('pip-reset')!.onclick = () => { setIsRunning(false); setSeconds(workDurationMinutes * 60); }; 
+        pipWin.document.getElementById('pip-reset')!.onclick = () => { dispatch({ type: 'PAUSE_TIMER' }); dispatch({ type: 'TICK', remainingSeconds: workDurationMinutes * 60 }); };
     };
 
     const toggleFullscreen = () => {
@@ -701,7 +759,7 @@ export function usePomodoro() {
         setLastSyncTime(null);
         localStorage.removeItem('google_access_token');
         localStorage.removeItem('google_token_expiry');
-        setSelectedTaskId('');
+        dispatch({ type: 'CLEAR_TASK' });
         alert("Logged out of Google account.");
     };
     const handlePullToRefresh = async () => {

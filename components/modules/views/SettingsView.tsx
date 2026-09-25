@@ -212,6 +212,16 @@ export default function SettingsView({
           >
             <span>📋</span> Restore Starter Tasks
           </button>
+          <button
+              onClick={() => {
+                localStorage.removeItem('pomo_timer_state');
+                localStorage.removeItem('pomo_target_end_time');
+                alert("Stale timer keys cleared!");
+              }}
+              className="w-full py-2 bg-rose-500 text-white rounded-xl font-bold text-xs"
+            >
+              🧹 Clear Stale Storage Keys
+            </button>
         </div>
       </div>
     </div>

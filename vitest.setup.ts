@@ -1,6 +1,8 @@
 import { vi } from 'vitest';
 import * as React from 'react';
 import { act } from 'react';
+import { defineConfig } from 'vitest/config';
+import path from 'path';
 
 // React 19 compatibility polyfill for @testing-library/react
 if (React && !(React as any).act) {
