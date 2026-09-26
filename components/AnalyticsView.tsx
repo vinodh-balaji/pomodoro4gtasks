@@ -19,27 +19,82 @@ export default function AnalyticsView({ sessions = [], tasks = [], DAILY_GOAL = 
         return `${year}-${month}-${day}`;
     };
 
-    const todayStr = getLocalDateStr(new Date());
+    const now = new Date();
 
-    const todaySessionsCount = sessions.filter((s: any) => {
-        const dateVal = s.completed_at || s.completedAt || s.date || s.timestamp || s._id?.replace('sess-', '');
-        if (!dateVal) return false;
-        const time = typeof dateVal === 'number' ? dateVal : new Date(dateVal).getTime();
-        if (isNaN(time)) return false;
-        return getLocalDateStr(new Date(time)) === todayStr;
-    }).length;
+    // 1. Time Boundaries
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
 
-    const progressPercent = Math.min(100, Math.round((todaySessionsCount / DAILY_GOAL) * 100));
+    const startOfWeek = new Date(now);
+    const day = startOfWeek.getDay();
+    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // Monday start
+    startOfWeek.setDate(diff);
+    startOfWeek.setHours(0, 0, 0, 0);
 
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // 2. Helper to filter and calculate total minutes & hours
+    const getStatsForRange = (startDate: Date) => {
+        const filtered = sessions.filter((s: any) => {
+            const dateVal = s.completed_at || s.completedAt || s.date || s.timestamp || s._id?.replace('sess-', '');
+            if (!dateVal) return false;
+            const time = typeof dateVal === 'number' ? dateVal : new Date(dateVal).getTime();
+            return !isNaN(time) && time >= startDate.getTime();
+        });
+
+        const totalMinutes = filtered.reduce((acc: number, s: any) => {
+            const mins = s.actual_seconds ? s.actual_seconds / 60 : (s.duration_minutes || 25);
+            return acc + mins;
+        }, 0);
+
+        return {
+            count: filtered.length,
+            hours: (totalMinutes / 60).toFixed(1),
+            minutes: Math.round(totalMinutes),
+        };
+    };
+
+    const todayStats = getStatsForRange(startOfToday);
+    const weekStats = getStatsForRange(startOfWeek);
+    const monthStats = getStatsForRange(startOfMonth);
+
+    const progressPercent = Math.min(100, Math.round((todayStats.count / DAILY_GOAL) * 100));
     return (
         <div className="space-y-6 max-w-2xl mx-auto pb-12">
+            {/* 1. Analytics Metric Cards (Today, Week, Month) */}
+            <div className="grid grid-cols-3 gap-3">
+                <div className="p-4 bg-white rounded-2xl border border-slate-200/70 shadow-sm flex flex-col justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Today</span>
+                    <div className="my-1">
+                        <span className="text-xl font-black text-slate-900 block">{todayStats.hours} <span className="text-xs font-semibold text-slate-500">hrs</span></span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 font-medium">{todayStats.count} sessions</span>
+                </div>
+
+                <div className="p-4 bg-white rounded-2xl border border-slate-200/70 shadow-sm flex flex-col justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">This Week</span>
+                    <div className="my-1">
+                        <span className="text-xl font-black text-slate-900 block">{weekStats.hours} <span className="text-xs font-semibold text-slate-500">hrs</span></span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 font-medium">{weekStats.count} sessions</span>
+                </div>
+
+                <div className="p-4 bg-white rounded-2xl border border-slate-200/70 shadow-sm flex flex-col justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">This Month</span>
+                    <div className="my-1">
+                        <span className="text-xl font-black text-slate-900 block">{monthStats.hours} <span className="text-xs font-semibold text-slate-500">hrs</span></span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 font-medium">{monthStats.count} sessions</span>
+                </div>
+            </div>
+            
             {/* Daily Goal Card */}
             <div className="p-5 bg-white rounded-2xl border border-slate-200/70 shadow-sm space-y-3">
                 <div className="flex items-center justify-between">
                     <div>
                         <h2 className="text-base font-bold text-slate-900">Daily Target</h2>
                         <p className="text-xs text-slate-500 font-medium">
-                            {todaySessionsCount} of {DAILY_GOAL} Pomodoros completed
+                            {todayStats.count} of {DAILY_GOAL} Pomodoros completed
                         </p>
                     </div>
                     <span className="text-2xl font-black text-indigo-600">{progressPercent}%</span>

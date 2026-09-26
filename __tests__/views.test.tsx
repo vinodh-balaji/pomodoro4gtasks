@@ -79,12 +79,12 @@ describe('1. DesktopView Comprehensive Coverage', () => {
     fireEvent.click(taskCards[taskCards.length - 1]);
 
     // Verify Modal Opened
-    expect(screen.getByText('Adjust Target Pomodoros:')).toBeTruthy();
+    expect(screen.getByText('Target Sessions:')).toBeTruthy();
 
     // Click "+" button inside modal (specifically the second '+' button rendered on screen)
     const plusButtons = screen.getAllByText('+');
     fireEvent.click(plusButtons[plusButtons.length - 1]);
-    expect(props.updateEstimatedPomos).toHaveBeenCalledWith({ taskId: 'task-1', estimatedPomos: 3 });
+    expect(props.updateEstimatedPomos).toHaveBeenCalledWith({ taskId: 'task-1', targetMinutes: 50 });
   });
 
   it('triggers task completion when checkbox is checked in board view', () => {

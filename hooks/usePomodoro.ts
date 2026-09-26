@@ -45,7 +45,7 @@ export function usePomodoro() {
     const workDurationMinutes = timerState.workDurationMinutes;
 
     const setWorkDurationMinutes = (minutes: number) => dispatch({ type: 'SET_DURATION', minutes });
-    const setSelectedTaskId = (taskId: string) => dispatch({ type: 'SELECT_TASK', taskId });
+    const setSelectedTaskId = (taskId: string) => handleSelectTask(taskId);
     const setSeconds = (secs: number | ((prev: number) => number)) => {
         if (typeof secs === 'function') {
             dispatch({ type: 'TICK', remainingSeconds: secs(timerState.seconds) });
@@ -78,10 +78,13 @@ export function usePomodoro() {
     const [localTasks, setLocalTasks] = useState<any[]>(STARTER_TASKS);
     const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
     const [showNotificationPrompt, setShowNotificationPrompt] = useState<boolean>(false);
+    // Add state and hydration for global duration and estimation mode
+    const [globalDuration, setGlobalDurationState] = useState<number>(25);
+    const [estimationMode, setEstimationModeState] = useState<'pomos' | 'hours'>('pomos');
 
     const [sessions, setSessions] = useState<any[]>([]);
     // Local override store for estimated pomodoros (persists estimates for both local and Google tasks)
-    const [taskEstimates, setTaskEstimates] = useState<Record<string, number>>({});
+    const [taskEstimates, setTaskEstimates] = useState<Record<string, any>>({});
     const [currentThemeId, setCurrentThemeId] = useState<string>(DEFAULT_THEME_ID);
 
     // Load saved theme preference
@@ -195,17 +198,39 @@ export function usePomodoro() {
         const hasSeenTour = localStorage.getItem('has_seen_onboarding');
         const savedSessions = localStorage.getItem('local_sessions');
         const savedEstimates = localStorage.getItem('task_estimates');
+        // In useEffect (Initial Load):
+        const savedGlobalDuration = localStorage.getItem('pomo_global_duration');
+        if (savedGlobalDuration) setGlobalDurationState(Number(savedGlobalDuration));
+
+        const savedEstimationMode = localStorage.getItem('pomo_estimation_mode');
+        if (savedEstimationMode === 'pomos' || savedEstimationMode === 'hours') {
+            setEstimationModeState(savedEstimationMode as 'pomos' | 'hours');
+        }
+
+        // Parse & purge orphaned Google tasks mistakenly saved into local_tasks
+        const loadedLocalTasks: any[] = savedLocalTasks ? JSON.parse(savedLocalTasks) : STARTER_TASKS;
+        const cleanedLocalTasks = loadedLocalTasks.filter((t: any) => {
+            const isOrphanedGoogleTask = t.gtask_id || (t.list_id && t.list_id !== 'local-default' && !t.list_id.startsWith('loclist-'));
+            return !isOrphanedGoogleTask;
+        });
+        if (savedLocalTasks && cleanedLocalTasks.length !== loadedLocalTasks.length) {
+            localStorage.setItem('local_tasks', JSON.stringify(cleanedLocalTasks));
+        }
+
         if (!hasSeenTour) {
             setShowOnboarding(true);
         }
 
         if (savedLocalLists) setLocalLists(JSON.parse(savedLocalLists));
-        if (savedLocalTasks) setLocalTasks(JSON.parse(savedLocalTasks));
+        setLocalTasks(cleanedLocalTasks);
         if (cachedLists) setGoogleLists(JSON.parse(cachedLists));
         if (cachedTasks) setGoogleTasks(JSON.parse(cachedTasks));
         if (savedSessions) setSessions(JSON.parse(savedSessions));
         if (savedEstimates) setTaskEstimates(JSON.parse(savedEstimates));
     }, []);
+
+    
+   
     const handleCompleteOnboarding = () => {
         localStorage.setItem('has_seen_onboarding', 'true');
         setShowOnboarding(false);
@@ -223,14 +248,34 @@ export function usePomodoro() {
         });
     };
     // 2. Storage & Drive Sync Helpers
-    const triggerDriveSync = (token: string | null, sess: any[], ests?: Record<string, number>) => {
+    const triggerDriveSync = (token: string | null, sess: any[], ests?: Record<string, any>, extraSettings?: Record<string, any>) => {
         if (!token) return;
         const payload: LocalAppData = {
             sessions: sess,
             taskEstimates: ests || taskEstimates,
-            settings: {},
+            settings: {
+                globalDuration,
+                estimationMode,
+                ...extraSettings,
+            },
         };
         saveAppDataToDrive(token, payload).catch(() => null);
+    };
+
+    const setGlobalDuration = (mins: number) => {
+        const valid = Math.max(1, mins);
+        setGlobalDurationState(valid);
+        localStorage.setItem('pomo_global_duration', valid.toString());
+        if (timerState.status === 'IDLE' && !selectedTaskId) {
+            dispatch({ type: 'SET_DURATION', minutes: valid });
+        }
+        triggerDriveSync(accessToken, sessions, taskEstimates, { globalDuration: valid, estimationMode });
+    };
+
+    const setEstimationMode = (mode: 'pomos' | 'hours') => {
+        setEstimationModeState(mode);
+        localStorage.setItem('pomo_estimation_mode', mode);
+        triggerDriveSync(accessToken, sessions, taskEstimates, { globalDuration, estimationMode: mode });
     };
 
     const saveSessions = (newSessions: any[]) => {
@@ -242,24 +287,48 @@ export function usePomodoro() {
     // Hybrid Local-First & Google Tasks Model
     const lists = accessToken ? [...localLists, ...googleLists] : localLists;
     const rawTasks = accessToken ? [...googleTasks, ...localTasks] : localTasks;
+
+
     // 1. Calculate completed pomodoros dynamically by counting logged sessions per task ID
     const sessionCounts = sessions.reduce((acc: Record<string, number>, s: any) => {
         if (s.task_id) acc[s.task_id] = (acc[s.task_id] || 0) + 1;
         return acc;
     }, {});
 
-    // 2. Decorate tasks with real-time completed session counts and persisted estimated pomo overrides
+    const taskActualSeconds = sessions.reduce((acc: Record<string, number>, s: any) => {
+        if (s.task_id) {
+            const secs = s.actual_seconds ? s.actual_seconds : (s.duration_minutes || 25) * 60;
+            acc[s.task_id] = (acc[s.task_id] || 0) + secs;
+        }
+        return acc;
+    }, {});
+
     const tasks = rawTasks.map((t: any) => {
-        const matchedEstimate = taskEstimates[t._id] ?? (t.gtask_id ? taskEstimates[t.gtask_id] : undefined);
-        const finalEstimate = matchedEstimate ?? (typeof t.estimated_pomos === 'number' && t.estimated_pomos > 0 ? t.estimated_pomos : 1);
+        const rawEst = taskEstimates[t._id] ?? (t.gtask_id ? taskEstimates[t.gtask_id] : undefined);
         
+        let target_minutes = 25;
+        let preferred_pomo_duration: number | undefined = undefined;
+
+        if (typeof rawEst === 'number') {
+            target_minutes = rawEst <= 12 ? rawEst * 25 : rawEst;
+        } else if (rawEst && typeof rawEst === 'object') {
+            target_minutes = (rawEst as any).target_minutes || 25;
+            preferred_pomo_duration = (rawEst as any).preferred_pomo_duration;
+        } else if (typeof t.estimated_pomos === 'number' && t.estimated_pomos > 0) {
+            target_minutes = t.estimated_pomos * 25;
+        }
+
+        const actual_seconds = (taskActualSeconds[t._id] || 0) + (t.gtask_id ? (taskActualSeconds[t.gtask_id] || 0) : 0);
+
         return {
             ...t,
+            target_minutes,
+            preferred_pomo_duration,
+            actual_seconds_spent: actual_seconds,
             completed_pomos: sessionCounts[t._id] || (t.gtask_id ? sessionCounts[t.gtask_id] : 0) || 0,
-            estimated_pomos: finalEstimate,
+            estimated_pomos: Math.max(1, Math.round(target_minutes / (preferred_pomo_duration || globalDuration || 25))),
         };
     });
-
 
     const activeList = lists.find((l: any) => l.is_visible) || lists[0] || null;
     const startOfDay = new Date();
@@ -417,61 +486,83 @@ export function usePomodoro() {
             const syncMin = forceFullSync ? undefined : (lastSyncTime || undefined);
             const nowIso = new Date().toISOString();
             const { lists: gLists, tasks: fetchedTasks } = await fetchAllGoogleDataDirectly(currentToken, syncMin);
-            setGoogleLists(gLists);
-            localStorage.setItem('cached_google_lists', JSON.stringify(gLists));
 
-            if (forceFullSync || !lastSyncTime) {
-                setGoogleTasks(fetchedTasks);
-                localStorage.setItem('cached_google_tasks', JSON.stringify(fetchedTasks));
-            } else if (fetchedTasks.length > 0) {
-                setGoogleTasks((prev) => {
-                    const updatedMap = new Map(fetchedTasks.map((t) => [t.gtask_id, t]));
-                    const merged = prev.map((t) => updatedMap.get(t.gtask_id) || t);
-                    const existingIds = new Set(prev.map((t) => t.gtask_id));
-                    const newTasks = fetchedTasks.filter((t) => !existingIds.has(t.gtask_id));
-                    return [...merged, ...newTasks];
-                });
+
+            if (gLists && gLists.length > 0) {
+                setGoogleLists(gLists);
+                localStorage.setItem('cached_google_lists', JSON.stringify(gLists));
+
+                if (forceFullSync || !lastSyncTime) {
+                    // Full Sync: Replace cache cleanly to purge deleted/ghost tasks
+                    setGoogleTasks(fetchedTasks);
+                    localStorage.setItem('cached_google_tasks', JSON.stringify(fetchedTasks));
+                } else if (fetchedTasks.length > 0) {
+                    // Incremental Sync: Merge updated tasks into current state so unchanged tasks aren't wiped
+                    setGoogleTasks((prev) => {
+                        const updatedMap = new Map(fetchedTasks.map((t) => [t.gtask_id, t]));
+                        const merged = prev.map((t) => updatedMap.get(t.gtask_id) || t);
+                        const existingIds = new Set(prev.map((t) => t.gtask_id));
+                        const newTasks = fetchedTasks.filter((t) => !existingIds.has(t.gtask_id));
+                        const finalTasks = [...merged, ...newTasks];
+                        localStorage.setItem('cached_google_tasks', JSON.stringify(finalTasks));
+                        return finalTasks;
+                    });
+                }
+                
+                setLastSyncTime(nowIso);
             }
-            setLastSyncTime(nowIso);
+            // Background Drive Sync: Only run on full syncs / launch and don't block task UI spinner
+            if (forceFullSync || !lastSyncTime) {
+                readAppDataFromDrive(currentToken).then((driveData) => {
+                    if (!driveData) return;
+                    // 🔍 INSPECT APPDATA STRUCTURE
+                    const allDriveSessions = driveData.sessions || (driveData as any).localSessions || [];
+                    const latestSessions = [...allDriveSessions].sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime()).slice(0, 25);
+                    
+                    console.log(`☁️ [DRIVE TOTAL SESSIONS COUNT]: ${allDriveSessions.length}`);
+                    console.log('☁️ [LATEST 25 SESSIONS IN DRIVE]:\n', JSON.stringify(latestSessions, null, 2));
+                    const rawDriveData = driveData as any;
+                    const driveSessions = driveData.sessions || rawDriveData.localSessions;
 
-            const driveData = await readAppDataFromDrive(currentToken);
-            if (driveData) {
-                const rawDriveData = driveData as any;
-                const driveSessions = driveData.sessions || rawDriveData.localSessions;
+                    if (driveSessions?.length) {
+                        setSessions((prevSessions: any[]) => {
+                            const sessionMap = new Map();
+                            prevSessions.forEach((s: any) => {
+                                const key = s._id || s.id;
+                                if (key) sessionMap.set(key, { ...s, _id: key });
+                            });
+                            driveSessions.forEach((s: any) => {
+                                const key = s._id || s.id;
+                                if (key) sessionMap.set(key, { ...s, _id: key });
+                            });
+                            const merged = Array.from(sessionMap.values());
+                            localStorage.setItem('local_sessions', JSON.stringify(merged));
+                            return merged;
+                        });
+                    }
+                    if (driveData.taskEstimates) {
+                        setTaskEstimates((prev) => {
+                            const merged = { ...driveData.taskEstimates, ...prev };
+                            localStorage.setItem('task_estimates', JSON.stringify(merged));
+                            return merged;
+                        });
+                    }
+                }).catch(() => null);            
+                
 
-                                
-                // Non-destructive session merging: combine local and Drive sessions by ID to preserve heatmap history across all devices
-                if (driveSessions?.length) {
-                    setSessions((prevSessions: any[]) => {
-                        const sessionMap = new Map();
-                        prevSessions.forEach((s: any) => {
-                            const key = s._id || s.id;
-                            if (key) sessionMap.set(key, { ...s, _id: key });
-                        });
-                        driveSessions.forEach((s: any) => {
-                            const key = s._id || s.id;
-                            if (key) sessionMap.set(key, { ...s, _id: key });
-                        });
-                        const merged = Array.from(sessionMap.values());
-                        localStorage.setItem('local_sessions', JSON.stringify(merged));
-                        return merged;
-                    });
-                }
-                // Restore and merge cross-device task estimates from Drive
-                if (driveData.taskEstimates) {
-                    setTaskEstimates((prev) => {
-                        const merged = { ...driveData.taskEstimates, ...prev };
-                        localStorage.setItem('task_estimates', JSON.stringify(merged));
-                        return merged;
-                    });
-                }
+
             }
             if (!silent) alert("Tasks successfully synced from Google!");
         } catch (error) {
-            localStorage.removeItem('google_access_token');
-            localStorage.removeItem('google_token_expiry');
-            setAccessToken(null);
-            await loginNative();
+            const err = error as any;
+            console.warn("Google sync error:", error);
+            // Only invalidate auth token if explicitly an authentication failure (401)
+            if (err?.status === 401 || err?.message?.includes('401')) {
+                localStorage.removeItem('google_access_token');
+                localStorage.removeItem('google_token_expiry');
+                setAccessToken(null);
+                await loginNative();
+            }
         } finally {
             setIsSyncing(false);
         }
@@ -558,7 +649,15 @@ export function usePomodoro() {
         }
     };
 
-    const handleSelectTask = (taskId: string) => dispatch({ type: 'SELECT_TASK', taskId });
+    const handleSelectTask = (taskId: string) => {
+        if (!taskId) {
+            dispatch({ type: 'CLEAR_TASK' });
+            return;
+        }
+        const targetTask = tasks.find((t: any) => t._id === taskId || t.gtask_id === taskId);
+        const launchDuration = targetTask?.preferred_pomo_duration || globalDuration;
+        dispatch({ type: 'SELECT_TASK', taskId, preferredDuration: launchDuration });
+    };
     
     const handleStart = async () => {
         playPop();
@@ -608,12 +707,23 @@ export function usePomodoro() {
         playPop();
         localStorage.removeItem('pomo_target_end_time');
         await LocalNotifications.cancel({ notifications: [{ id: 101 }] }).catch(() => {});
-
+        // Snapshot task and list details before logging
+        const activeTask = tasks.find((t: any) => t._id === selectedTaskId || (t.gtask_id && t.gtask_id === selectedTaskId));
+        const activeList = activeTask ? lists.find((l: any) => l._id === activeTask.list_id || l.gtask_list_id === activeTask.list_id) : null;
+        const presetSeconds = workDurationMinutes * 60;
+        const elapsedSeconds = seconds === 0 ? presetSeconds : Math.max(0, presetSeconds - seconds);
+        const actualMinutes = Number((elapsedSeconds / 60).toFixed(2));
+        const now = new Date();
+        const startTime = new Date(now.getTime() - elapsedSeconds * 1000);
         const newSession = {
             _id: 'sess-' + Date.now(),
-            completed_at: new Date().toISOString(),
-            duration_minutes: workDurationMinutes,
+            started_at: startTime.toISOString(),
+            completed_at: now.toISOString(),
+            duration_minutes: actualMinutes > 0 ? actualMinutes : workDurationMinutes,
+            actual_seconds: elapsedSeconds,
             task_id: selectedTaskId || 'unassigned',
+            task_title: activeTask?.title || 'Focus Session',
+            list_title: activeList?.title || 'General',
         };
         saveSessions([...sessions, newSession]);
         dispatch({ type: 'LOG_SESSION' });
@@ -703,19 +813,28 @@ export function usePomodoro() {
 
     // Normalizes input to accept either object payload ({ taskId, estimatedPomos }) or positional arguments (taskId, pomos)
     const updateEstimatedPomos = (
-        targetInput: string | { taskId: string; estimatedPomos?: number; estimated_pomos?: number },
+        targetInput: string | { taskId: string; targetMinutes?: number; preferredPomoDuration?: number; estimatedPomos?: number; estimated_pomos?: number },
         pomos?: number,
         e?: React.MouseEvent
     ) => {
         let taskId: string;
-        let targetPomos: number | undefined;
+        let estimateVal: any;
 
         if (typeof targetInput === 'object' && targetInput !== null) {
             taskId = targetInput.taskId;
-            targetPomos = targetInput.estimatedPomos ?? targetInput.estimated_pomos;
+            if (targetInput.targetMinutes !== undefined) {
+                estimateVal = {
+                    target_minutes: Math.max(1, targetInput.targetMinutes),
+                    preferred_pomo_duration: targetInput.preferredPomoDuration,
+                };
+            } else {
+                const count = targetInput.estimatedPomos ?? targetInput.estimated_pomos ?? 1;
+                estimateVal = Math.max(1, count);
+            }
         } else {
             taskId = targetInput;
-            targetPomos = pomos;
+            const count = pomos ?? 1;
+            estimateVal = Math.max(1, count);
         }
 
         if (!taskId) return;
@@ -725,17 +844,15 @@ export function usePomodoro() {
             e.stopPropagation();
         }
         
-        // Persist estimate override to taskEstimates map so Google task updates aren't wiped on API sync
-        const parsedPomos = typeof targetPomos === 'number' && !isNaN(targetPomos) ? targetPomos : 1;
-        const validPomos = Math.max(1, parsedPomos);
+        
 
         // Map estimate to both local _id and gtask_id so UI lookup never drops the target count
         const targetTask = tasks.find((t: any) => t._id === taskId || t.gtask_id === taskId);
         const updatedEstimates = {
             ...taskEstimates,
-            [taskId]: validPomos,
-            ...(targetTask?._id ? { [targetTask._id]: validPomos } : {}),
-            ...(targetTask?.gtask_id ? { [targetTask.gtask_id]: validPomos } : {}),
+            [taskId]: estimateVal,
+            ...(targetTask?._id ? { [targetTask._id]: estimateVal } : {}),
+            ...(targetTask?.gtask_id ? { [targetTask.gtask_id]: estimateVal } : {}),
         };
 
         console.log('[UPDATE POMOS MATCH]', { targetTaskFound: targetTask, previousMap: taskEstimates });
@@ -763,7 +880,7 @@ export function usePomodoro() {
         alert("Logged out of Google account.");
     };
     const handlePullToRefresh = async () => {
-        await handleSyncGoogleTasks(true, undefined, true);
+        await handleSyncGoogleTasks(true);
     };
 
     return {
@@ -787,6 +904,8 @@ export function usePomodoro() {
         toggleFullscreen, toggleFloatingWidget, formatTime,
         handleLogout, loginNative, 
         workDurationMinutes, setWorkDurationMinutes,
+        globalDuration, setGlobalDuration,
+        estimationMode, setEstimationMode,
         isSyncing,
         showOnboarding,
         setShowOnboarding, handleCompleteOnboarding,

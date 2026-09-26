@@ -13,7 +13,7 @@ export type TimerAction =
   | { type: 'PAUSE_TIMER' }
   | { type: 'RESUME_TIMER' }
   | { type: 'TICK'; remainingSeconds?: number }
-  | { type: 'SELECT_TASK'; taskId: string }
+  | { type: 'SELECT_TASK'; taskId: string; preferredDuration?: number }
   | { type: 'CLEAR_TASK' }
   | { type: 'LOG_SESSION' }
   | { type: 'SET_DURATION'; minutes: number }
@@ -79,10 +79,15 @@ export function timerReducer(state: TimerState, action: TimerAction): TimerState
     }
 
     case 'SELECT_TASK': {
-      return {
-        ...state,
-        selectedTaskId: action.taskId,
-      };
+        const targetMins = action.preferredDuration || state.workDurationMinutes;
+        return {
+            ...state,
+            selectedTaskId: action.taskId,
+          ...(state.status === 'IDLE' ? {
+          workDurationMinutes: targetMins,
+          seconds: targetMins * 60,
+        } : {}),
+        };
     }
 
     case 'CLEAR_TASK': {

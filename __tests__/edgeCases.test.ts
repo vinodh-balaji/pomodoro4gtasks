@@ -153,4 +153,30 @@ describe('usePomodoro - Edge Cases & Complete Coverage Suite', () => {
 
     expect(result.current.isRunning).toBe(true);
   });
+
+
+  it('7. Preserves task_title and list_title snapshots in session history even after task completion', async () => {
+    const { result } = renderHook(() => usePomodoro());
+    const targetTaskId = 'loc-start-1';
+
+    act(() => {
+      result.current.handleSelectTask(targetTaskId);
+    });
+
+    await act(async () => {
+      await result.current.handleLogSession();
+    });
+
+    expect(result.current.sessions[0].task_title).toBe('Tap me to view task details & set target pomodoros 🍅');
+    expect(result.current.sessions[0].list_title).toBe('My Tasks');
+
+    const targetTask = result.current.tasks.find((t) => t._id === targetTaskId);
+    await act(async () => {
+      await result.current.handleCompleteTask(targetTask);
+    });
+
+    expect(result.current.tasks.find((t) => t._id === targetTaskId)).toBeUndefined();
+    expect(result.current.sessions[0].task_title).toBe('Tap me to view task details & set target pomodoros 🍅');
+    expect(result.current.sessions[0].list_title).toBe('My Tasks');
+  });
 });

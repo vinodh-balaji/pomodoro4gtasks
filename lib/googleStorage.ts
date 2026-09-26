@@ -9,7 +9,7 @@ export interface LocalAppData {
   localLists?: any[];
   localTasks?: any[];
   sessions: any[];
-  taskEstimates?: Record<string, number>;
+  taskEstimates?: Record<string, number | { target_minutes: number; preferred_pomo_duration?: number }>;
   settings: Record<string, any>;
 }
 

@@ -49,6 +49,7 @@ export default function DesktopView(props: any) {
         handleEditTask,
         toggleListVisibility,
         updateEstimatedPomos,
+        estimationMode = 'pomos',
         toggleFullscreen,
         toggleFloatingWidget,
         formatTime,
@@ -59,6 +60,7 @@ export default function DesktopView(props: any) {
         setTheme,
         handleReplayOnboarding,
         handleResetStarterTasks,
+        globalDuration = 25,
     } = props;
 
     const theme: ThemeConfig = currentTheme || THEMES.light;
@@ -250,48 +252,127 @@ export default function DesktopView(props: any) {
                             />
                         </div>
 
-                        <div className={`bg-white/60 dark:bg-slate-900/60 border ${theme.cardBorder} rounded-2xl p-4 space-y-3`}>
+                        <div className={`bg-white/60 dark:bg-slate-900/60 border ${theme.cardBorder} rounded-2xl p-4 space-y-4`}>
                             <div className="flex justify-between items-center">
-                                <span className={`text-xs font-bold uppercase tracking-wider ${theme.textSecondary}`}>Pomodoro Progress</span>
+                                <span className={`text-xs font-bold uppercase tracking-wider ${theme.textSecondary}`}>
+                                    Task Estimation ({estimationMode === 'hours' ? 'Hours Mode' : 'Pomodoro Mode'})
+                                </span>
                                 <span className="text-xs font-mono font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 px-2.5 py-1 rounded-xl">
-                                    {expandedTask.completed_pomos || 0} / {expandedTask.estimated_pomos || 1} Pomodoros
+                                    {estimationMode === 'hours'
+                                        ? `Target: ${Math.floor((expandedTask.target_minutes || 25) / 60)}h ${(expandedTask.target_minutes || 25) % 60}m`
+                                        : `Target: ${Math.max(1, Math.round((expandedTask.target_minutes || 25) / globalDuration))} sessions`}
                                 </span>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-2 py-2 border-y border-slate-200/60 min-h-[48px]">
-                                {Array.from({ length: expandedTask.estimated_pomos || 1 }).map((_, idx) => {
-                                    const isCompleted = idx < (expandedTask.completed_pomos || 0);
-                                    return (
-                                        <span
-                                            key={idx}
-                                            className={`text-2xl transition-all transform duration-150 ${
-                                                isCompleted ? 'scale-110 filter drop-shadow-xs' : 'opacity-25 grayscale scale-95'
-                                            }`}
-                                        >
-                                            🍅
-                                        </span>
-                                    );
-                                })}
-                            </div>
+                           {estimationMode === 'hours' ? (
+                                /* MODE A: HOURS & MINUTES INPUT CONTROLS */
+                                <div className="space-y-3">
+                                    {/* Hours Control */}
+                                    <div className="flex items-center justify-between">
+                                        <span className={`text-xs font-semibold ${theme.textPrimary}`}>Hours:</span>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    playPop();
+                                                    const current = expandedTask.target_minutes || 60;
+                                                    const newMins = Math.max(15, current - 60);
+                                                    updateEstimatedPomos({ taskId: expandedTask._id, targetMinutes: newMins });
+                                                }}
+                                                className="w-8 h-8 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 text-slate-700 dark:text-slate-200 font-bold text-base shadow-xs active:scale-90"
+                                            >-</button>
+                                            <span className={`text-sm font-bold font-mono px-2 min-w-[50px] text-center ${theme.textPrimary}`}>
+                                                {Math.floor((expandedTask.target_minutes || 0) / 60)} hrs
+                                            </span>
+                                            <button
+                                                onClick={() => {
+                                                    playPop();
+                                                    const current = expandedTask.target_minutes || 0;
+                                                    updateEstimatedPomos({ taskId: expandedTask._id, targetMinutes: current + 60 });
+                                                }}
+                                                className="w-8 h-8 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 text-slate-700 dark:text-slate-200 font-bold text-base shadow-xs active:scale-90"
+                                            >+</button>
+                                        </div>
+                                    </div>
 
-                            <div className="flex items-center justify-between pt-1">
-                                <span className={`text-xs font-semibold ${theme.textPrimary}`}>Adjust Target Pomodoros:</span>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => { playPop(); updateEstimatedPomos({ taskId: expandedTask._id, estimatedPomos: Math.max(1, (expandedTask.estimated_pomos ?? 1) - 1) }); }}
-                                        className="w-9 h-9 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 active:bg-slate-100 text-slate-700 dark:text-slate-200 font-bold text-lg shadow-xs transition flex items-center justify-center"
-                                    >
-                                        -
-                                    </button>
-                                    <span className={`text-base font-bold font-mono px-2 ${theme.textPrimary}`}>{expandedTask.estimated_pomos || 1}</span>
-                                    <button
-                                        onClick={() => { playPop(); updateEstimatedPomos({ taskId: expandedTask._id, estimatedPomos: (expandedTask.estimated_pomos ?? 1) + 1 }); }}
-                                        className="w-9 h-9 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 active:bg-slate-100 text-slate-700 dark:text-slate-200 font-bold text-lg shadow-xs transition flex items-center justify-center"
-                                    >
-                                        +
-                                    </button>
+                                    {/* Minutes Control */}
+                                    <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+                                        <span className={`text-xs font-semibold ${theme.textPrimary}`}>Minutes:</span>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    playPop();
+                                                    const current = expandedTask.target_minutes || 0;
+                                                    const newMins = Math.max(15, current - 15);
+                                                    updateEstimatedPomos({ taskId: expandedTask._id, targetMinutes: newMins });
+                                                }}
+                                                className="w-8 h-8 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 text-slate-700 dark:text-slate-200 font-bold text-base shadow-xs active:scale-90"
+                                            >-</button>
+                                            <span className={`text-sm font-bold font-mono px-2 min-w-[50px] text-center ${theme.textPrimary}`}>
+                                                {(expandedTask.target_minutes || 0) % 60} mins
+                                            </span>
+                                            <button
+                                                onClick={() => {
+                                                    playPop();
+                                                    const current = expandedTask.target_minutes || 0;
+                                                    updateEstimatedPomos({ taskId: expandedTask._id, targetMinutes: current + 15 });
+                                                }}
+                                                className="w-8 h-8 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 text-slate-700 dark:text-slate-200 font-bold text-base shadow-xs active:scale-90"
+                                            >+</button>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                /* MODE B: POMODORO SPRINT BLOCK + SESSIONS STEPPER */
+                                <div className="space-y-4">
+                                    {/* Target Sessions Stepper */}
+                                    <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+                                       <span className={`text-xs font-semibold ${theme.textPrimary}`}>Target Sessions:</span>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    playPop();
+                                                    const blockMins = expandedTask.preferred_pomo_duration || globalDuration || 25;
+                                                    const currentPomos = Math.max(1, Math.round((expandedTask.target_minutes || 25) / blockMins));
+                                                    const newPomos = Math.max(1, currentPomos - 1);
+                                                    updateEstimatedPomos({
+                                                        taskId: expandedTask._id,
+                                                        targetMinutes: newPomos * blockMins,
+                                                        preferredPomoDuration: blockMins,
+                                                    });
+                                                }}
+                                                className="w-8 h-8 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 text-slate-700 dark:text-slate-200 font-bold text-base shadow-xs active:scale-90"
+                                            >-</button>
+                                            <span className={`text-sm font-bold font-mono px-2 ${theme.textPrimary}`}>
+                                                {Math.max(1, Math.round((expandedTask.target_minutes || 25) / globalDuration))}
+                                            </span>
+                                            <button
+                                                onClick={() => {
+                                                    playPop();
+                                                    const currentPomos = Math.max(1, Math.round((expandedTask.target_minutes || 25) / globalDuration));
+                                                    const newPomos = currentPomos + 1;
+                                                    updateEstimatedPomos({
+                                                        taskId: expandedTask._id,
+                                                        targetMinutes: newPomos * globalDuration,
+                                                    });
+                                                }}
+                                                className="w-8 h-8 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 text-slate-700 dark:text-slate-200 font-bold text-base shadow-xs active:scale-90"
+                                            >+</button>
+                                        </div>
+                                    </div>
+
+                                    {/* Equation Calculation Display */}
+                                    {(() => {
+                                        const count = Math.max(1, Math.round((expandedTask.target_minutes || 25) / globalDuration));
+                                        const totalMins = count * globalDuration;
+                                        const totalHrs = (totalMins / 60).toFixed(1);
+                                        return (
+                                            <div className="text-xs font-mono text-center text-rose-600 dark:text-rose-400 font-semibold bg-rose-50 dark:bg-rose-950/30 py-1.5 rounded-xl border border-rose-200/50 dark:border-rose-900/50">
+                                                {count} sessions × {globalDuration}m = {totalHrs} hrs ({totalMins} mins)
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            )}
                         </div>
 
                         <div className="space-y-2.5 pt-1">
@@ -302,7 +383,7 @@ export default function DesktopView(props: any) {
                                 }}
                                 className={`w-full py-3.5 ${theme.accentBg} text-white rounded-2xl font-bold text-sm shadow-lg active:scale-[0.97] transition flex items-center justify-center gap-2`}
                             >
-                                <span>▶</span> Start 25m Pomodoro
+                                <span>▶</span> Start {expandedTask.preferred_pomo_duration || globalDuration || 25}m Pomodoro
                             </button>
                             <button
                                 onClick={(e) => {

@@ -1,7 +1,9 @@
 // components/modules/views/SettingsView.tsx
 "use client";
 
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { runDriveSessionTitleMigration } from '../../../lib/migrations';
+
 import { 
   playPop, 
   getTickEnabled, 
@@ -25,6 +27,10 @@ interface SettingsViewProps {
   handleReplayOnboarding?: () => void;
   handleResetStarterTasks?: () => void;
   theme: any;
+  globalDuration?: number;
+  setGlobalDuration?: (mins: number) => void;
+  estimationMode?: 'pomos' | 'hours';
+  setEstimationMode?: (mode: 'pomos' | 'hours') => void;
 }
 
 export default function SettingsView({
@@ -36,9 +42,31 @@ export default function SettingsView({
   handleReplayOnboarding,
   handleResetStarterTasks,
   theme,
+  globalDuration = 25,
+  setGlobalDuration,
+  estimationMode = 'pomos',
+  setEstimationMode,
 }: SettingsViewProps) {
   const [ambientType, setAmbientType] = useState(getCurrentAmbientType());
+  const [isMigrating, setIsMigrating] = useState(false);
 
+  const handleRepairSessions = async () => {
+    if (!accessToken) {
+      alert("Please connect your Google account first.");
+      return;
+    }
+
+    setIsMigrating(true);
+    try {
+      const count = await runDriveSessionTitleMigration(accessToken);
+      alert(`Success! Repaired and updated ${count} session titles in Google Drive.`);
+    } catch (error: any) {
+      console.error("Migration failed:", error);
+      alert(`Failed to repair sessions: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setIsMigrating(false);
+    }
+  };
   return (
     <div className="w-full max-w-3xl mx-auto space-y-6 pb-24 animate-fadeIn">
       {/* Page Header */}
@@ -82,7 +110,64 @@ export default function SettingsView({
           })}
         </div>
       </div>
+      {/* 2. Global Timer & Estimation Defaults */}
+      <div className={`${theme.cardBg} border ${theme.cardBorder} rounded-3xl p-6 shadow-lg backdrop-blur-md space-y-4`}>
+        <span className={`text-[11px] font-bold uppercase tracking-wider block ${theme.textSecondary}`}>Timer & Estimation Defaults</span>
 
+        <div className="p-4 rounded-2xl bg-white/50 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-700/80 space-y-4">
+          {/* Global Duration Selector */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <span className={`text-xs font-bold block ${theme.textPrimary}`}>⏱️ Default Sprint Duration</span>
+              <span className={`text-xs font-mono font-bold text-rose-500`}>{globalDuration} mins</span>
+            </div>
+            <div className="grid grid-cols-6 gap-2">
+              {[5, 10, 15, 25, 45, 50].map((mins) => {
+                const isActive = globalDuration === mins;
+                return (
+                  <button
+                    key={mins}
+                    onClick={() => { playPop(); setGlobalDuration?.(mins); }}
+                    className={`py-2 rounded-xl text-xs font-bold transition-all border ${
+                      isActive 
+                        ? 'bg-rose-500 text-white border-rose-500 shadow-sm' 
+                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {mins}m
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Estimation Mode Toggle */}
+          <div className="flex items-center justify-between pt-3 border-t border-slate-200/60 dark:border-slate-700/60">
+            <div>
+              <span className={`text-xs font-bold block ${theme.textPrimary}`}>📊 Task Estimation View Mode</span>
+              <span className={`text-[10px] block mt-0.5 ${theme.textSecondary}`}>Choose how task targets render across your task cards</span>
+            </div>
+            <div className="flex bg-slate-200/60 dark:bg-slate-800 p-1 rounded-xl gap-1 border border-slate-300/40 dark:border-slate-700/40">
+              <button
+                onClick={() => { playPop(); setEstimationMode?.('pomos'); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  estimationMode === 'pomos' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                🍅 Pomodoros
+              </button>
+              <button
+                onClick={() => { playPop(); setEstimationMode?.('hours'); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  estimationMode === 'hours' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                ⏱️ Hours
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
       {/* 2. Timer & Audio Preferences */}
       <div className={`${theme.cardBg} border ${theme.cardBorder} rounded-3xl p-6 shadow-lg backdrop-blur-md space-y-4`}>
         <span className={`text-[11px] font-bold uppercase tracking-wider block ${theme.textSecondary}`}>Audio & Timer Preferences</span>
@@ -199,28 +284,36 @@ export default function SettingsView({
       {/* 4. Guides & Quick Actions */}
       <div className={`${theme.cardBg} border ${theme.cardBorder} rounded-3xl p-6 shadow-lg backdrop-blur-md space-y-3`}>
         <span className={`text-[11px] font-bold uppercase tracking-wider block ${theme.textSecondary}`}>Guides & Quick Actions</span>
-        <div className="flex gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <button
             onClick={() => handleReplayOnboarding?.()}
-            className="flex-1 py-3 px-4 rounded-2xl bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs active:scale-95 transition flex items-center justify-center gap-2 shadow-2xs"
+            className="py-3 px-4 rounded-2xl bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs active:scale-95 transition flex items-center justify-center gap-2 shadow-2xs"
           >
             <span>🚀</span> Replay Welcome Tour
           </button>
           <button
             onClick={() => handleResetStarterTasks?.()}
-            className="flex-1 py-3 px-4 rounded-2xl bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs active:scale-95 transition flex items-center justify-center gap-2 shadow-2xs"
+            className="py-3 px-4 rounded-2xl bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs active:scale-95 transition flex items-center justify-center gap-2 shadow-2xs"
           >
             <span>📋</span> Restore Starter Tasks
           </button>
+          <button
+            onClick={handleRepairSessions}
+            disabled={isMigrating || !accessToken}
+            className="py-3 px-4 rounded-2xl bg-white/60 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs active:scale-95 transition flex items-center justify-center gap-2 shadow-2xs disabled:opacity-50"
+          >
+            <span>🛠️</span> {isMigrating ? 'Repairing...' : 'Repair Cloud Session Titles'}
+          </button>
+
           <button
               onClick={() => {
                 localStorage.removeItem('pomo_timer_state');
                 localStorage.removeItem('pomo_target_end_time');
                 alert("Stale timer keys cleared!");
               }}
-              className="w-full py-2 bg-rose-500 text-white rounded-xl font-bold text-xs"
+              className="py-3 px-4 bg-rose-500 text-white rounded-2xl font-bold text-xs active:scale-95 transition flex items-center justify-center gap-2"
             >
-              🧹 Clear Stale Storage Keys
+              <span>🧹</span> Clear Stale Storage Keys
             </button>
         </div>
       </div>
